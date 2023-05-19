@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title> Medieval cities generation </title>
+	<script> 
+		let index = 0;
+		displayImages();
+		function displayImages() {
+		let i;
+		const images = document.getElementsByClassName("image");
+		console.log(images)
+		for (i = 0; i < images.length; i++) {
+			images[i].style.display = "none";
+		}
+		index++;
+		if (index > images.length) {
+			index = 1;
+		}
+		images[index-1].style.display = "block";
+		setTimeout(displayImages, 2000); 
+		}
+	</script>
+    <style>
+        /* General styles */
+
+.container {
+border: 1px solid black;
+padding: 10px;
+/* margin-bottom: 10px; */
+max-width: 1000px;
+margin: 20px auto;
+}
+
+.h1 {
+align-items: center;
+align-text: center;
+font-size: 36px;
+font-weight: bold;
+margin-top: 0;
+}
+
+/* Color styles */
+h3 {
+font-size: 20px;
+color: #8b0000; /* dark red */
+}
+
+h4 {
+font-size: 18px;
+color: #006400; /* dark green */
+}
+
+h5 {
+	font-size: 18px;
+	color: #8b4513; /* saddle brown */
+}
+
+.p {
+line-height: 1.5;
+margin-bottom: 10px;
+}
+
+.details {
+margin-bottom: 10px;
+max-width: 1000px;
+margin: 20px auto;
+}
+
+.detail {
+margin-bottom: 10px;
+}
+
+.site {
+border: 2px solid #ccc;
+padding: 10px;
+}
+
+
+
+* {
+box-sizing: border-box;
+margin: 0;
+padding: 0;
+}
+
+/* Font styles */
+@import url('https://fonts.googleapis.com/css?family=Merriweather:400,700|Roboto:400,700&display=swap');
+
+body {
+font-family: 'Roboto', sans-serif;
+font-size: 16px;
+line-height: 1.5;
+color: #333;
+}
+
+h1, h2 {
+font-family: 'Merriweather', serif;
+font-weight: bold;
+}
+
+h1 {
+font-size: 36px;
+}
+
+h2 {
+font-size: 24px;
+}
+
+p {
+font-size: 18px;
+}
+
+img {
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+	margin-bottom: 0;
+	width: 90%;
+}
+
+
+.grid-container {
+	display: grid;
+	grid-template-columns: auto auto auto;
+	grid-gap: 10px;
+	padding: 10px;
+}
+
+
+.grid-item {
+border: 1px solid black;
+text-align: center;
+width: 100%;
+}
+
+/* Color styles */
+.npc-name {
+color: #8b0000; /* dark red */
+}
+
+.npc-quote {
+color: #006400; /* dark green */
+}
+
+
+.site_img {
+	width: 1024;
+	height: 768;
+	padding: 20px;
+}
+
+
+
+span {
+	font-size:30px;
+	cursor:pointer;
+	position: fixed;
+	top: 0;
+	left: 0;
+	padding: 10px;
+}
+
+* {
+    box-sizing: border-box
+}
+
+.image-slideshow {
+  max-width: 1000px;
+  position: relative;
+  margin: auto;
+}
+
+img {
+  width: 100%
+}
+
+.fade {
+  animation-name: fade;
+  animation-duration: 2s;
+}
+
+@keyframes fade {
+  from {opacity: .4}
+  to {opacity: 1}
+}
+
+    </style>
+</head>
+<body>
+    <div class="grid-container">
+        {% for name, data in sites.items() %}
+        <div class="grid-item">
+			<h4>{{ name }}</h4>
+            <h5>{{ data.size }}</h5>
+            <p style="font-size: 12px;">{{ data.desc }}</p>
+			<a href="{{ data.id }}/index.html">
+			
+			<div class="image-slideshow">
+			{% for k, img in data.img_path.items() %}
+				<div class="image fade">
+					<img src="{{img}}" alt="{{k}}">
+				</div>
+			{% endfor %}
+			</div>
+
+
+        </a>
+        </div>
+        {% endfor %}
+    </div>
+
+			
+</body>
+</html>
+	

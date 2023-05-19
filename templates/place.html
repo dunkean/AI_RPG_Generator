@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<script>
+		function openNav() {
+			document.getElementById("mySidenav").style.width = "150px";
+		  }
+		  
+		  /* Set the width of the side navigation to 0 */
+		  function closeNav() {
+			document.getElementById("mySidenav").style.width = "0";
+		  } 
+		</script>
+    <title>{{ name }}</title>
+    <style>
+        /* General styles */
+
+.container {
+border: 1px solid black;
+padding: 10px;
+/* margin-bottom: 10px; */
+max-width: 1000px;
+margin: 20px auto;
+}
+
+.h1 {
+align-items: center;
+align-text: center;
+font-size: 36px;
+font-weight: bold;
+margin-top: 0;
+}
+
+/* Color styles */
+h3 {
+font-size: 20px;
+color: #8b0000; /* dark red */
+}
+
+h4 {
+font-size: 18px;
+color: #006400; /* dark green */
+}
+
+h5 {
+	font-size: 18px;
+	color: #8b4513; /* saddle brown */
+}
+
+.p {
+line-height: 1.5;
+margin-bottom: 10px;
+}
+
+.details {
+margin-bottom: 10px;
+max-width: 1000px;
+margin: 20px auto;
+}
+
+.detail {
+margin-bottom: 10px;
+}
+
+.anecdote {
+font-size: 18px;
+font-style: italic;
+}
+
+.architecture {
+font-size: 18px;
+font-weight: bold;
+}
+
+.keyword {
+color: red;
+}
+
+.groups {
+max-width: 1000px;
+margin: 20px auto;
+}
+
+.group {
+border: 2px solid #ccc;
+padding: 10px;
+}
+
+/* Layout styles */
+.workplace {
+max-width: 1000px;
+margin: 20px auto;
+}
+
+.site {
+border: 2px solid #ccc;
+padding: 10px;
+}
+
+
+
+* {
+box-sizing: border-box;
+margin: 0;
+padding: 0;
+}
+
+/* Font styles */
+@import url('https://fonts.googleapis.com/css?family=Merriweather:400,700|Roboto:400,700&display=swap');
+
+body {
+font-family: 'Roboto', sans-serif;
+font-size: 16px;
+line-height: 1.5;
+color: #333;
+}
+
+h1, h2 {
+font-family: 'Merriweather', serif;
+font-weight: bold;
+}
+
+h1 {
+font-size: 36px;
+}
+
+h2 {
+font-size: 24px;
+}
+
+p {
+font-size: 18px;
+}
+
+img {
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+	margin-bottom: 0;
+	width: 90%;
+}
+
+.thumb {
+	margin-left: 0;
+	margin-right: 0;
+	width: 100%;
+	margin-bottom: 0;
+}
+
+.grid-container {
+	display: grid;
+	grid-template-columns: auto auto auto auto auto;
+	grid-gap: 2px;
+	padding: 2px;
+}
+
+.grid-container2 {
+	display: grid;
+	grid-template-columns: auto auto auto;
+	grid-gap: 2px;
+	padding: 2px;
+}
+
+.grid-item {
+border: 1px solid black;
+text-align: center;
+width: 100%;
+}
+
+/* Layout styles */
+.npc {
+max-width: 1000px;
+margin: 20px auto;
+border: 2px solid #ccc;
+padding: 20px;
+}
+
+.npc-name {
+text-align: center;
+}
+
+.npc-quote {
+text-align: center;
+font-style: italic;
+}
+
+.npc-short-description {
+text-align: center;
+}
+
+.npc-details {
+display: flex;
+}
+
+.npc-attributes {
+flex-basis: 30%;
+}
+
+.npc-attributes li {
+list-style-type: none;
+}
+
+.npc-family,
+.npc-job,
+.npc-relationship,
+.npc-anecdotes,
+.npc-goals,
+.npc-plot,
+.npc-secret {
+flex-basis: 70%;
+}
+
+/* Color styles */
+.npc-name {
+color: #8b0000; /* dark red */
+}
+
+.npc-quote {
+color: #006400; /* dark green */
+}
+
+.npc-short-description {
+color: #8b4513; /* saddle brown */
+}
+
+.npc-family-title,
+.npc-job-title,
+.npc-relationship-title,
+.npc-anecdotes-title,
+.npc-goals-title,
+.npc-plot-title,
+.npc-secret-title {
+color: #00008b; /* dark blue */
+}
+
+.site_img {
+	width: 1024;
+	height: 768;
+	padding: 20px;
+}
+
+.portrait {
+	width: 576;
+	height: 768;
+}
+
+.sidenav {
+	height: 100%; /* 100% Full-height */
+	width: 0; /* 0 width - change this with JavaScript */
+	position: fixed; /* Stay in place */
+	z-index: 1; /* Stay on top */
+	top: 0; /* Stay at the top */
+	left: 0;
+	background-color: #111; /* Black*/
+	overflow-x: hidden; /* Disable horizontal scroll */
+	padding-top: 60px; /* Place content 60px from the top */
+	transition: 0.5s; /* 0.5 second transition effect to slide in the sidenav */
+  }
+  
+  /* The navigation menu links */
+  .sidenav a {
+	padding: 2px 2px 0px 0px;
+	text-decoration: none;
+	font-size: 14px;
+	color: #818181;
+	display: block;
+	transition: 0.3s;
+  }
+  
+  /* When you mouse over the navigation links, change their color */
+  .sidenav a:hover {
+	color: #f1f1f1;
+  }
+  
+  /* Position and style the close button (top right corner) */
+  .sidenav .closebtn {
+	position: absolute;
+	top: 0;
+	right: 15px;
+	font-size: 24px;
+	margin-left: 5px;
+  }
+  
+  /* Style page content - use this if you want to push the page content to the right when you open the side navigation */
+  #main {
+	transition: margin-left .5s;
+	padding: 5px;
+  }
+  
+  /* On smaller screens, where height is less than 450px, change the style of the sidenav (less padding and a smaller font size) */
+  @media screen and (max-height: 450px) {
+	.sidenav {padding-top: 5px;}
+	.sidenav a {font-size: 8px;}
+  }
+
+span {
+	font-size:30px;
+	cursor:pointer;
+	position: fixed;
+	top: 0;
+	left: 0;
+	padding: 10px;
+}
+    </style>
+</head>
+<body>
+	<div id="mySidenav" class="sidenav">
+		<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
+		<a href="../index.html">> Back <</a>
+		<a href="#_home">{{ name }}</a>
+		<a href="#_lore"><center><small>Lore</small></center></a>
+		{% for key, value in details.items() %}
+		<a href="#_{{key}}"><small><center>{{key}}</center></small></a>
+		{% endfor %}
+		<a href="#_workplaces">Workplaces</a>
+		<a href="#_groups">Groups</a>
+		<a href="#key_npcs">Key NPCs</a>
+		<a href="#lo_npcs">Other NPCs</a>
+	 </div>
+	<!-- Use any element to open the sidenav -->
+	<span onclick="openNav()">Menu</span>
+
+    <div class="container">
+        <h1 id="_home">{{ name }}</h1>
+        <p>{{ details.description.description }}</p>
+		{% for site_name, site_img in details.global_views.items() %}
+		<img src="{{ site_img }}" alt="{{site_name}}">
+		{% endfor %}
+		<div id="_lore" class="lore">
+            <h2>Lore</h2>
+            <p>{{ lore.description }}</p>
+            <p><b>Keywords:</b> {{ (", ").join(lore.keywords) }}</p>
+            <p><b>World type:</b> {{ lore.world_type }}</p>
+        </div>
+        <!--<p><b>Keywords:</b> {{ (", ").join(details.description.keywords) }}</p>-->
+        <div class="details">
+            <h2>Details</h2>
+            {% for key, value in details.items() %}
+			<p></p>
+			<p></p>
+			<p></p>
+            <div id="_{{key}}" class="detail">
+                <h3>{{ key }}</h3>
+                <p>{{ (", ").join(value.details) }}</p>
+                <p><b>Keywords:</b> {{ (", ").join(value.keywords) }}</p>
+                {% if key == 'architecture' %}
+                <p><b>Global view:</b> {{ value.global_view }}</p>
+                <p><b>Global view detailed:</b> {{ value.global_view_detailed }}</p>
+                <p><b>Style:</b> {{ (", ").join(value.style) }}</p>
+                <div class="sites">
+                    <h4>Sites</h4>
+                    {% for site_key, site_value in value.sites_details.items() %}
+                    <div class="site">
+                        <h5>{{ site_key }}</h5>
+						<img class="site_img" src="{{ value.sites_img[site_key] }}" alt="{{ site_key }}_{{ name }}">
+                        <p>{{ site_value }}</p>
+                        <p><b>Keywords:</b> {{ (", ").join(value.sites_keywords[site_key]) }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+		<p></p>
+		<p></p>
+		<p></p>
+		<div id="_workplaces" class="workplaces">
+			<h1>Workplaces</h1>
+			<div class="grid-container">
+				{% for name, data in workplaces.items() %}
+				<div class="grid-item">
+					<h4>{{ name }}</h4>
+					<p style="font-size: 10px;">{{ data.keywords }}</p>
+				<a href="#{{ name }}">
+				<img class="thumb" src="{{ data.rsite }}" alt="{{ name }}">
+				</a>
+				</div>
+				{% endfor %}
+			</div>
+
+			{% for key, value in workplaces.items() %}
+			<div id="{{ key }}" class="workplace">
+				<h3>{{ value.name }}</h3>
+				<p><b>Type:</b> {{ value.type }}</p>
+				<p><b>Field:</b> {{ value.field }}</p>
+				<p><b>Activity:</b> {{ value.activity }}</p>
+				<p><b>Description:</b> {{ value.desc }}</p>
+				<p><b>Population:</b> {{ value.population }}</p>
+				<p><b>Employees:</b> </p>
+					<ul>
+					{% for employee in value.employees %}
+						{% if "job" in npcs[employee] %}
+						{% set rank = npcs[employee]["job"]["rank"] %}
+						{% set skill = npcs[employee]["job"]["skill level"] %}
+						{% else %}
+						{% set rank = "" %}
+						{% set skill = "" %}
+						{% endif %}
+						<li><a href="#{{ employee }}">{{ employee }}</a> - {{ rank }} - {{ skill }} </li>
+					{% endfor %}
+					</ul>
+				<p><b>Prosperity:</b> {{ value.prosperity }}</p>
+				<p><b>Relationship:</b> {{ value.relationship }}</p>
+				<p><b>History:</b> {{ value.history }}</p>
+				<p><b>Anecdotes:</b> {{ value.anecdotes }}</p>
+				<p><b>Plot:</b> {{ value.plot }}</p>
+				<p><b>Keywords:</b> {{ value.keywords }}</p>
+				<p><b>Goals keywords:</b> {{ (", ").join(value.goals_keywords) }}</p>
+				<div class="sites">
+					<h4>Sites</h4>
+					{% for site_key, site_value in value.sites.items() %}
+					<div class="site">
+						<h5>{{ site_key }}</h5>
+						<img class="site_img" src="{{ site_value.img_path }}" alt="{{ site_key }}_{{ key }}">
+						<p><b>Type:</b> {{ site_value.type }}</p>
+						<p><b>State:</b> {{ site_value.state }}</p>
+						<p><b>Details:</b> {{ site_value.details }}</p>
+						<p><b>Inherits architecture:</b> {{ site_value.inherits_architecture }}</p>
+						<p><b>Architecture:</b> {{ (", ").join(site_value.architecture) }}</p>
+					</div>
+					{% endfor %}
+				</div>
+			</div>
+			{% endfor %}
+		</div>
+		<p></p>
+		<p></p>
+		<p></p>
+		<div id="_groups" class="groups">
+			<h1>Groups</h1>
+			<div class="grid-container2">
+				{% for name, data in groups.items() %}
+				<div id="_{{ data.name }}" class="grid-item">
+					<h3>{{ data.name }}</h3>
+					<p>{{ data.rtype }}</p>
+					<p>{{ data.origin }}</p>
+					<p>{{ data.size }}</p>
+					
+					{% for member in data.key_figures %}
+						{% if "family" in npcs[member] %}
+						{% set situation = npcs[member]["family"]["situation"] %}
+						{% set rank = npcs[member]["family"]["rank"] %}
+						{% else %}
+						{% set situation = "" %}
+						{% set rank = "" %}
+						{% endif %}
+						<p><small><a href="#{{ member }}">{{ member }}</a> - {{ situation }} - {{ rank }} </small></p>
+					{% endfor %}
+					{% for member in data.members %}
+						{% if "family" in npcs[member] %}
+							{% set situation = npcs[member]["family"]["situation"] %}
+							{% set rank = npcs[member]["family"]["rank"] %}
+						{% else %}
+							{% set situation = "" %}
+							{% set rank = "" %}
+						{% endif %}
+
+						{% if member not in data.key_figures %}
+							<p><small><a href="#{{ member }}">{{ member }}</a> - {{ situation }} - {{ rank }} </small></p>
+						{% endif %}
+					{% endfor %}
+				    <br><br>
+					{% if data.workplace|length > 0%}
+						<small><a href="#{{ data.workplace }}">{{ data.workplace }}</a></small>
+					{% endif %}
+				</div>
+				{% endfor %}
+			</div>
+		</div>
+
+		<p></p>
+		<p></p>
+		<p></p>
+		<div id="_npcs" class="npcs">
+			<h1>NPCs</h1>
+			<h1>Key NPCs</h2>
+			<div id="key_npcs" class="grid-container">
+				{% for npc_name, npc in key_npcs.items() %}
+				<div class="grid-item">
+					<h3>{{ npc_name }}</h3>
+					<p>{{ npc.age }}</p>
+					<p>{{ npc.origin }}</p>
+				<a href="#{{ npc_name }}">
+				<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}" width="200px">
+				</a>
+				</div>
+				{% endfor %}
+			</div>
+			<p></p>
+			<p></p>
+			<p></p>
+			<h1>Other NPCs</h2>
+			<div id="lo_npcs" class="grid-container">
+				{% for npc_name, npc in lo_npcs.items() %}
+				<div class="grid-item">
+					<h3>{{ npc_name }}</h3>
+					<p>{{ npc.age }}</p>
+					<p>{{ npc.origin }}</p>
+				<a href="#{{ npc_name }}">
+				<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}" width="200px">
+				</a>
+				</div>
+				{% endfor %}
+			</div>
+
+			{% for npc_name, npc in npcs.items() %}
+				<div id="{{ npc_name }}" class="npc">
+					<h1 class="npc-name">{{ npc_name }}</h1>
+					<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}">
+					<p class="npc-quote">{{ npc.quote }}</p>
+					<p class="npc-short-description">{{ npc.short_description }}</p>
+					{% if 'relationship' in npc %}
+						<div class="key_npc-details">
+					{% else %}
+						<div class="npc-details">
+					{% endif %}
+					<ul class="npc-attributes">
+						<li class="npc-age"><b>Age:</b> {{ npc.age }}</li>
+						<li class="npc-age-look"><b>Age look:</b> {{ npc.age_look }}</li>
+						<li class="npc-beauty"><b>Beauty:</b> {{ npc.beauty }}</li>
+						<li class="npc-clothes"><b>Clothes:</b> {{ npc.clothes }}</li>
+						<li class="npc-eyes"><b>Eyes:</b> {{ npc.eyes }}</li>
+						<li class="npc-gender"><b>Gender:</b> {{ npc.gender }}</li>
+						<li class="npc-generation"><b>Generation:</b> {{ npc.generation }}</li>
+						<li class="npc-habits"><b>Habits:</b> {{ npc.habits }}</li>
+						<li class="npc-hair"><b>Hair:</b> {{ npc.hair }}</li>
+						<li class="npc-height"><b>Height:</b> {{ npc.height }}</li>
+						<li class="npc-origin"><b>Origin:</b> {{ npc.origin }}</li>
+						<li class="npc-physical-detail"><b>Physical detail:</b> {{ npc.physical_detail }}</li>
+						<li class="npc-race"><b>Race:</b> {{ npc.race }}</li>
+						<li class="npc-skin"><b>Skin:</b> {{ npc.skin }}</li>
+						<li class="npc-structure-preference"><b>Structure preference:</b> {{ npc.structure_preference }}</li>
+						<li class="npc-surname"><b>Surname:</b> {{ npc.surname }}</li>
+						<li class="npc-traits"><b>Traits:</b> {{ npc.traits }}</li>
+						<li class="npc-weight"><b>Weight:</b> {{ npc.weight }}</li>
+					</ul>
+
+					<div class="npc-family">
+						<h2 class="npc-family-title">Group</h2>
+						<p><b>Group Name:</b> <a href="#_{{ npc.family.family_name }}">{{ npc.family.family_name }}</a></p>
+						{% for family_member in npc.family %}
+							<p class="npc-family-member"><b>{{ family_member }}:</b> {{ npc.family[family_member] }}</p>
+						{% endfor %}
+					</div>
+
+					{% if 'job' in npc %}
+						<div class="npc-job">
+						<h2 class="npc-job-title">Job</h2>
+						<p><b>Workplace:</b> <a href="#{{ npc.job.workplace }}">{{ npc.job.workplace }}</a></p>
+						{% for job_attribute in npc.job %}
+							<p class="npc-job-attribute"><b>{{ job_attribute }}:</b> {{ npc.job[job_attribute] }}</p>
+						{% endfor %}
+						</div>
+					{% endif %}
+
+					{% if 'relationship' in npc %}
+						<div class="npc-relationship">
+						<h2 class="npc-relationship-title">Relationship</h2>
+						{% for relationship in npc.relationship %}
+							<p class="npc-relationship-item"><a href="#{{relationship}}"><b>{{ relationship }}:</b></a> {{ npc.relationship[relationship] }}</p>
+						{% endfor %}
+						</div>
+						<div class="npc-anecdotes">
+						<h2 class="npc-anecdotes-title">Anecdotes</h2>
+						{% for anecdote in npc.anecdotes %}
+							<p class="npc-anecdote">{{ anecdote }}</p>
+						{% endfor %}
+						</div>
+						<div class="npc-goals">
+						<h2 class="npc-goals-title">Goals</h2>
+						{% for goal in npc.goals %}
+							<p class="npc-goal">{{ goal }}</p>
+						{% endfor %}
+						</div>
+						<div class="npc-plot">
+						<h2 class="npc-plot-title">Plot</h2>
+						{% for plot in npc.plot %}
+							<p class="npc-plot-item">{{ plot }}</p>
+						{% endfor %}
+						</div>
+						<div class="npc-secret">
+						<h2 class="npc-secret-title">Secret</h2>
+						<p class="npc-secret-content">{{ npc.secret }}</p>
+						</div>
+					{% endif %}
+				</div>  
+			</div>  
+			{% endfor %}
+		</div>
+    </div>
+</body>
+</html>
+	

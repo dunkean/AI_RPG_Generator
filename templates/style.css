@@ -1,0 +1,279 @@
+.container {
+  border: 1px solid black;
+  padding: 10px;
+  /* margin-bottom: 10px; */
+  max-width: 1000px;
+  margin: 20px auto;
+  }
+  
+  .h1 {
+  align-items: center;
+  align-text: center;
+  font-size: 36px;
+  font-weight: bold;
+  margin-top: 0;
+  }
+  
+  /* Color styles */
+  h3 {
+  font-size: 20px;
+  color: #8b0000; /* dark red */
+  }
+  
+  h4 {
+  font-size: 18px;
+  color: #006400; /* dark green */
+  }
+  
+  h5 {
+    font-size: 18px;
+    color: #8b4513; /* saddle brown */
+  }
+  
+  .p {
+  line-height: 1.5;
+  margin-bottom: 10px;
+  }
+  
+  .details {
+  margin-bottom: 10px;
+  max-width: 1000px;
+  margin: 20px auto;
+  }
+  
+  .detail {
+  margin-bottom: 10px;
+  }
+  
+  .anecdote {
+  font-size: 18px;
+  font-style: italic;
+  }
+  
+  .architecture {
+  font-size: 18px;
+  font-weight: bold;
+  }
+  
+  .keyword {
+  color: red;
+  }
+  
+  .groups {
+  max-width: 1000px;
+  margin: 20px auto;
+  }
+  
+  .group {
+  border: 2px solid #ccc;
+  padding: 10px;
+  }
+  
+  /* Layout styles */
+  .workplace {
+  max-width: 1000px;
+  margin: 20px auto;
+  }
+  
+  .site {
+  border: 2px solid #ccc;
+  padding: 10px;
+  }
+  
+  
+  
+  * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  }
+  
+  /* Font styles */
+  @import url('https://fonts.googleapis.com/css?family=Merriweather:400,700|Roboto:400,700&display=swap');
+  
+  body {
+  font-family: 'Roboto', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #333;
+  }
+  
+  h1, h2 {
+  font-family: 'Merriweather', serif;
+  font-weight: bold;
+  }
+  
+  h1 {
+  font-size: 36px;
+  }
+  
+  h2 {
+  font-size: 24px;
+  }
+  
+  p {
+  font-size: 18px;
+  }
+  
+  img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 0;
+    width: 90%;
+  }
+  
+  .thumb {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+    margin-bottom: 0;
+  }
+  
+  .grid-container {
+    display: grid;
+    grid-template-columns: auto auto auto auto auto;
+    grid-gap: 2px;
+    padding: 2px;
+  }
+  
+  .grid-item {
+  border: 1px solid black;
+  text-align: center;
+  width: 100%;
+  }
+  
+  /* Layout styles */
+  .npc {
+  max-width: 1000px;
+  margin: 20px auto;
+  border: 2px solid #ccc;
+  padding: 20px;
+  }
+  
+  .npc-name {
+  text-align: center;
+  }
+  
+  .npc-quote {
+  text-align: center;
+  font-style: italic;
+  }
+  
+  .npc-short-description {
+  text-align: center;
+  }
+  
+  .npc-details {
+  display: flex;
+  }
+  
+  .npc-attributes {
+  flex-basis: 30%;
+  }
+  
+  .npc-attributes li {
+  list-style-type: none;
+  }
+  
+  .npc-family,
+  .npc-job,
+  .npc-relationship,
+  .npc-anecdotes,
+  .npc-goals,
+  .npc-plot,
+  .npc-secret {
+  flex-basis: 70%;
+  }
+  
+  /* Color styles */
+  .npc-name {
+  color: #8b0000; /* dark red */
+  }
+  
+  .npc-quote {
+  color: #006400; /* dark green */
+  }
+  
+  .npc-short-description {
+  color: #8b4513; /* saddle brown */
+  }
+  
+  .npc-family-title,
+  .npc-job-title,
+  .npc-relationship-title,
+  .npc-anecdotes-title,
+  .npc-goals-title,
+  .npc-plot-title,
+  .npc-secret-title {
+  color: #00008b; /* dark blue */
+  }
+  
+  .site_img {
+    width: 1024;
+    height: 768;
+    padding: 20px;
+  }
+  
+  .portrait {
+    width: 576;
+    height: 768;
+  }
+  
+  .sidenav {
+    height: 100%; /* 100% Full-height */
+    width: 0; /* 0 width - change this with JavaScript */
+    position: fixed; /* Stay in place */
+    z-index: 1; /* Stay on top */
+    top: 0; /* Stay at the top */
+    left: 0;
+    background-color: #111; /* Black*/
+    overflow-x: hidden; /* Disable horizontal scroll */
+    padding-top: 60px; /* Place content 60px from the top */
+    transition: 0.5s; /* 0.5 second transition effect to slide in the sidenav */
+    }
+    
+    /* The navigation menu links */
+    .sidenav a {
+    padding: 8px 8px 8px 32px;
+    text-decoration: none;
+    font-size: 25px;
+    color: #818181;
+    display: block;
+    transition: 0.3s;
+    }
+    
+    /* When you mouse over the navigation links, change their color */
+    .sidenav a:hover {
+    color: #f1f1f1;
+    }
+    
+    /* Position and style the close button (top right corner) */
+    .sidenav .closebtn {
+    position: absolute;
+    top: 0;
+    right: 25px;
+    font-size: 36px;
+    margin-left: 50px;
+    }
+    
+    /* Style page content - use this if you want to push the page content to the right when you open the side navigation */
+    #main {
+    transition: margin-left .5s;
+    padding: 20px;
+    }
+    
+    /* On smaller screens, where height is less than 450px, change the style of the sidenav (less padding and a smaller font size) */
+    @media screen and (max-height: 450px) {
+    .sidenav {padding-top: 15px;}
+    .sidenav a {font-size: 18px;}
+    }
+  
+  span {
+    font-size:30px;
+    cursor:pointer;
+    position: fixed;
+    top: 0;
+    left: 0;
+    padding: 10px;
+  }

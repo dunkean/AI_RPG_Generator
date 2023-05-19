@@ -1,0 +1,3 @@
+prompt = """((heroic fantasy)), masterpiece, rpg illustration, fine art painting ((front full body view)) of a alone (adult:1.3) (male) ((dwarf)) with a (ugly face:1.3), 35 years old, Inn and tavern outfit, by greg rutkowski and reylia slaby, (photorealistic), ultra detailed, realistic eyes, detailed eyes, cinematic lighting, ((masterpiece)), sharp focus, Moderate A charming inn with a tavern on the main floor background, <lora:epiNoiseoffset_v2:1>"""
+#TODO refaire les openposes de nains (ils sont trop maigres)
+#passer à deliberate2
