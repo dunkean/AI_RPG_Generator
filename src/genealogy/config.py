@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import random
+from copy import deepcopy
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -35,6 +37,52 @@ class Settlement(Settings):
         if not self.activities or sum(self.activities.values()) <= 0:
             raise ValueError("Every settlement needs positive activity weights")
         return self
+
+
+class SettlementType(Settings):
+    """Virtual place quotas; founder weight is capacity times initial_weight."""
+
+    kind: str = Field(min_length=1)
+    share: Nonnegative = 1
+    minimum_count: int = Field(default=0, ge=0)
+    capacity: int = Field(gt=0)
+    initial_weight: Positive = 1
+    activities: dict[str, Nonnegative] = Field(default_factory=lambda: {"agriculture": 1})
+    races: dict[str, Nonnegative] = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def weights(self):
+        if not self.activities or sum(self.activities.values()) <= 0:
+            raise ValueError("Every settlement type needs positive activity weights")
+        return self
+
+
+def default_settlement_types() -> list[SettlementType]:
+    return [
+        SettlementType(
+            kind="metropolis",
+            share=1,
+            capacity=50000,
+            activities={"trade": 5, "craft": 4, "administration": 1},
+        ),
+        SettlementType(
+            kind="city",
+            share=4,
+            capacity=10000,
+            activities={"trade": 3, "craft": 5, "agriculture": 2},
+        ),
+        SettlementType(
+            kind="town",
+            share=15,
+            capacity=2000,
+            activities={"agriculture": 4, "craft": 3, "trade": 3},
+        ),
+        SettlementType(
+            kind="village", share=50, capacity=600, activities={"agriculture": 9, "craft": 1}
+        ),
+        SettlementType(kind="hamlet", share=30, capacity=100, activities={"agriculture": 1}),
+    ]
 
 
 class Demography(Settings):
@@ -191,6 +239,7 @@ class Scenario(Settings):
     target_tolerance: Probability = 0.1
     virtual_settlements: int = Field(default=16, ge=1, le=10000)
     virtual_spacing: Positive = 20
+    settlement_types: list[SettlementType] = Field(default_factory=default_settlement_types)
     capacity_mode: Literal["scale", "fixed"] = "scale"
     demography: Demography = Field(default_factory=Demography)
     society: Society = Field(default_factory=Society)
@@ -207,6 +256,15 @@ class Scenario(Settings):
 
     @model_validator(mode="after")
     def references(self):
+        if not self.settlements:
+            types = self.settlement_types
+            if not types or (
+                sum(t.share for t in types) <= 0
+                and sum(t.minimum_count for t in types) != self.virtual_settlements
+            ):
+                raise ValueError("Virtual settlement types need positive total shares")
+            if sum(t.minimum_count for t in types) > self.virtual_settlements:
+                raise ValueError("Settlement minimum counts exceed virtual_settlements")
         ids = [p.id for p in self.settlements]
         if len(ids) != len(set(ids)):
             raise ValueError("Settlement IDs must be unique")
@@ -255,7 +313,7 @@ class Scenario(Settings):
             pairs.add(pair)
             if not set(rule.parents + tuple(rule.offspring)) <= set(names):
                 raise ValueError("Unknown race in crossbreeding rule")
-        for place in self.settlements:
+        for place in self.settlements or self.settlement_types:
             if not set(place.races) <= set(names) or place.races and sum(place.races.values()) <= 0:
                 raise ValueError("Invalid settlement race weights")
         demographic_bases = [self.demography]
@@ -282,7 +340,7 @@ def load_scenario(path: Path) -> Scenario:
 
 
 def virtual_map(config: Scenario) -> list[Settlement]:
-    """A reproducible grid with agricultural, market, mining and coastal economies."""
+    """Seeded grid with exact size, guaranteed minima and proportional place quotas."""
     if config.settlements:
         if config.capacity_mode == "fixed":
             return config.settlements
@@ -292,27 +350,30 @@ def virtual_map(config: Scenario) -> list[Settlement]:
             p.model_copy(update={"capacity": round(p.capacity * scale)}) for p in config.settlements
         ]
     width = math.ceil(math.sqrt(config.virtual_settlements))
+    types = config.settlement_types
+    remaining = config.virtual_settlements - sum(t.minimum_count for t in types)
+    total_share = sum(t.share for t in types)
+    quotas = [remaining * t.share / total_share if remaining else 0 for t in types]
+    counts = [t.minimum_count + math.floor(q) for t, q in zip(types, quotas)]
+    order = sorted(range(len(types)), key=lambda i: (-(quotas[i] % 1), i))
+    for i in order[: config.virtual_settlements - sum(counts)]:
+        counts[i] += 1
+    profiles = [t for t, count in zip(types, counts) for _ in range(count)]
+    random.Random(config.seed).shuffle(profiles)
     result = []
-    for i in range(config.virtual_settlements):
-        kind, capacity, activities = (
-            ("town", 5000, {"agriculture": 4, "craft": 3, "trade": 3})
-            if i % 7 == 0
-            else ("mining", 1200, {"mining": 7, "craft": 2, "agriculture": 1})
-            if i % 5 == 0
-            else ("port", 1800, {"fishing": 5, "trade": 3, "craft": 2})
-            if i % width == 0
-            else ("village", 1000, {"agriculture": 9, "craft": 1})
-        )
+    for i, profile in enumerate(profiles):
         result.append(
             Settlement(
                 id=i,
-                name=f"{kind.title()} {i}",
-                kind=kind,
-                capacity=capacity,
-                initial_weight=capacity,
+                name=f"{profile.kind.replace('_', ' ').title()} {i}",
+                kind=profile.kind,
+                capacity=profile.capacity,
+                initial_weight=profile.capacity * profile.initial_weight,
                 x=(i % width) * config.virtual_spacing,
                 y=(i // width) * config.virtual_spacing,
-                activities=activities,
+                activities=profile.activities,
+                races=profile.races,
+                metadata=deepcopy(profile.metadata),
             )
         )
     # Virtual worlds automatically scale their economic support to scenario size.

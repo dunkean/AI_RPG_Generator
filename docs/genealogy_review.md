@@ -16,6 +16,17 @@ différentes, lecture répétée de la configuration et sens relatif des affinit
 
 ## Corrections apportées à partir des revues
 
+La diversité configurable des lieux et le lanceur Windows ont également été
+relus par Sol et Opus 5.5. Les quotas ont été vérifiés ; le cas des nombres exacts
+sans proportions a été corrigé, et plusieurs profils d'un même type sont permis.
+Les différences de poids initiaux entre cartes explicites et profils virtuels,
+les distributions raciales locales, les IDs des événements et la réutilisation
+des archives par le lanceur sont explicités dans le guide. Les métadonnées des
+lieux sont copiées indépendamment. La nouvelle démo fantasy produit 5 554 vivants
+et 24 627 personnes historiques en 7,37 secondes, archive de 2 936 832 octets.
+Les mesures de grande échelle ci-dessous précèdent ce changement de carte ; elles
+restent des références de capacité, pas des mesures du nouveau catalogue.
+
 | Problème signalé | Réponse dans le prototype |
 | --- | --- |
 | Parenté désactivée au-delà de 200 000 personnes dans l'ancien hybride | Contrôle borné, toujours actif, accès direct aux parents |

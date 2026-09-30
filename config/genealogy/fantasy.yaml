@@ -6,6 +6,36 @@ generations: 8
 generation_years: 25
 initial_population: 4000
 virtual_settlements: 16
+settlement_types:
+  - kind: city
+    share: 0
+    minimum_count: 1
+    capacity: 12000
+    initial_weight: 0.15
+    activities: {trade: 4, craft: 5, administration: 1}
+  - kind: town
+    share: 15
+    capacity: 2000
+    activities: {agriculture: 4, craft: 3, trade: 3}
+  - kind: village
+    share: 45
+    capacity: 600
+    activities: {agriculture: 9, craft: 1}
+  - kind: hamlet
+    share: 25
+    capacity: 100
+    activities: {agriculture: 1}
+  - kind: mining_village
+    share: 8
+    minimum_count: 1
+    capacity: 600
+    activities: {mining: 7, craft: 2, agriculture: 1}
+    races: {dwarf: 8, human: 2}
+  - kind: port
+    share: 7
+    minimum_count: 1
+    capacity: 1200
+    activities: {fishing: 5, trade: 3, craft: 2}
 society:
   divorce_rate: 0.001
   migration_rate: 0.012
@@ -90,6 +120,8 @@ crossbreeding:
 # Unlisted mixed pairs cannot form a reproductive union in this prototype.
 # Same-race unions inherit that race; dwarf/human therefore stays disabled.
 events:
+  # IDs refer to grid positions, not settlement types. Changing the seed or
+  # settlement catalogue can change which kinds occupy this frontier.
   - name: War in the human frontier
     start_year: 1100
     end_year: 1104

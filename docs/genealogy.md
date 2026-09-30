@@ -12,6 +12,17 @@ une histoire cohérente, mesurable et ajustable avant d'y greffer le monde.
 
 ## Lancer et explorer
 
+Sous Windows, double-cliquer sur `explore_genealogy.cmd` : il génère la démo
+fantasy si nécessaire, puis sert l'explorateur sur http://127.0.0.1:8765.
+Garder sa fenêtre ouverte pendant la consultation. On peut aussi lui passer
+le chemin d'une archive existante. L'HTML dépend de ce serveur local.
+Le lanceur exige un environnement local : `python -m venv .venv`, puis
+`.venv\Scripts\python.exe -m pip install -e ".[dev]"`.
+Il réutilise l'archive existante : après modification du YAML, générer une nouvelle
+archive avec la commande `generate`, puis la passer au lanceur. Une génération
+interrompue peut laisser un fichier `.partial` ; choisir une autre sortie pour
+relancer, ou retirer ce fichier temporaire après avoir arrêté la génération.
+
 Depuis la racine du dépôt, sous PowerShell :
 
 ```powershell
@@ -42,6 +53,59 @@ qui portent sur le dernier recensement. Cliquer sur une date situe l'événement
 sur la carte ; cliquer sur un parent, enfant ou nœud ouvre sa fiche.
 Les origines des ascendants et le parcours de l'individu apparaissent sur la carte.
 Le serveur est limité à `127.0.0.1` et les archives sont ouvertes en lecture seule.
+
+## Diversité des lieux
+
+La carte virtuelle utilise `settlement_types`, une liste extensible de profils.
+Par défaut : métropoles, villes, bourgs, villages et hameaux. Le scénario fantasy
+ajoute ports et villages miniers. Chaque profil configure `kind`, `share`,
+`minimum_count`, `capacity`, `initial_weight`, `activities`, `races` et `metadata`.
+Les types sont répartis sur la grille selon la graine du scénario.
+
+`minimum_count` réserve d'abord des lieux ; les places restantes sont distribuées
+proportionnellement à `share`, arrondies par les plus grands restes. La somme
+finale vaut exactement `virtual_settlements`.
+On peut aussi fixer tous les nombres par `minimum_count` avec `share: 0`.
+Plusieurs profils peuvent partager un `kind` tout en ayant des métiers différents.
+Ces proportions comptent des lieux, pas des habitants : le poids initial d'un
+lieu vaut `capacity * initial_weight`.
+La capacité économique n'impose donc pas sa population initiale. Une grande ville
+peut commencer peu peuplée. `capacity_mode: fixed` conserve les capacités ;
+`scale` les augmente si nécessaire pour soutenir la taille demandée du monde.
+
+```yaml
+virtual_settlements: 100
+settlement_types:
+  - kind: metropolis
+    share: 1
+    minimum_count: 1
+    capacity: 50000
+    activities: {trade: 5, craft: 4, administration: 1}
+  - kind: city
+    share: 4
+    capacity: 10000
+    activities: {trade: 3, craft: 5, agriculture: 2}
+  - kind: village
+    share: 70
+    capacity: 600
+    activities: {agriculture: 9, craft: 1}
+  - kind: hamlet
+    share: 25
+    capacity: 100
+    activities: {agriculture: 1}
+```
+
+Une carte explicite via `settlements` conserve les types et réglages de chaque
+lieu ; le catalogue virtuel n'est alors pas utilisé. Les lieux restent fixes
+pendant une simulation : fondation de villes et changement de type sont à venir.
+Sur cette carte explicite, `initial_weight` est un poids **absolu** par lieu,
+égal à 1 par défaut : renseigner ces poids pour répartir les fondateurs selon
+les tailles voulues. Il ne s'agit pas du multiplicateur des profils virtuels.
+Les `races` locales remplacent complètement les poids globaux pour les fondateurs
+du lieu ; les catégories omises y sont absentes au départ. La composition globale
+est donc le résultat des distributions locales, puis des unions et migrations.
+Les IDs virtuels désignent des positions de grille : changer la graine ou le
+catalogue peut changer les types touchés par un événement ciblant ces IDs.
 
 ## Temps, fondateurs et filiations
 

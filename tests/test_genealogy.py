@@ -28,6 +28,111 @@ def quiet_demography(**changes):
     }
 
 
+def test_virtual_place_quotas_minima_and_profile_inheritance():
+    config = scenario(
+        virtual_settlements=10,
+        capacity_mode="fixed",
+        settlement_types=[
+            {
+                "kind": "capital",
+                "share": 0,
+                "minimum_count": 1,
+                "capacity": 10000,
+                "initial_weight": 0.1,
+                "activities": {"trade": 1},
+                "races": {"human": 1},
+                "metadata": {"seat": True},
+            },
+            {"kind": "village", "share": 2, "capacity": 600},
+            {"kind": "hamlet", "share": 1, "capacity": 100},
+        ],
+    )
+    places = virtual_map(config)
+    assert [p.model_dump() for p in places] == [p.model_dump() for p in virtual_map(config)]
+    assert {
+        kind: sum(p.kind == kind for p in places) for kind in ("capital", "village", "hamlet")
+    } == {"capital": 1, "village": 6, "hamlet": 3}
+    capital = next(p for p in places if p.kind == "capital")
+    assert capital.capacity == 10000 and capital.initial_weight == 1000
+    assert capital.activities == {"trade": 1}
+    assert capital.races == {"human": 1} and capital.metadata == {"seat": True}
+
+
+@pytest.mark.parametrize(
+    "types",
+    [
+        [],
+        [{"kind": "village", "capacity": 10, "share": 0}],
+        [{"kind": "village", "capacity": 10, "minimum_count": 3}],
+        [{"kind": "village", "capacity": 10, "races": {"unknown": 1}}],
+        [{"kind": "village", "capacity": 10, "activities": {"craft": 0}}],
+    ],
+)
+def test_invalid_virtual_place_profiles(types):
+    with pytest.raises(ValidationError):
+        scenario(virtual_settlements=2, settlement_types=types)
+
+
+def test_small_virtual_map_and_explicit_map_override():
+    assert len(virtual_map(scenario(virtual_settlements=1))) == 1
+    config = scenario(
+        capacity_mode="fixed",
+        settlement_types=[],
+        settlements=[
+            {"id": 42, "name": "Custom", "kind": "fortress", "x": 5, "y": 8, "capacity": 20},
+        ],
+    )
+    assert virtual_map(config) == config.settlements
+
+
+def test_fractional_place_quotas_and_independent_metadata():
+    config = scenario(
+        virtual_settlements=7,
+        settlement_types=[
+            {
+                "kind": "mining_village",
+                "share": 2,
+                "capacity": 600,
+                "metadata": {"resources": ["iron"]},
+            },
+            {"kind": "hamlet", "share": 1, "capacity": 100},
+        ],
+    )
+    places = virtual_map(config)
+    mining = [p for p in places if p.kind == "mining_village"]
+    assert len(mining) == 5 and len(places) == 7
+    assert mining[0].name.startswith("Mining Village")
+    mining[0].metadata["resources"].append("gold")
+    assert mining[1].metadata["resources"] == ["iron"]
+    assert config.settlement_types[0].metadata["resources"] == ["iron"]
+
+
+def test_exact_place_counts_allow_zero_shares_and_distinct_profiles_of_same_kind():
+    config = scenario(
+        virtual_settlements=2,
+        capacity_mode="fixed",
+        settlement_types=[
+            {
+                "kind": "village",
+                "share": 0,
+                "minimum_count": 1,
+                "capacity": 100,
+                "activities": {"fishing": 1},
+            },
+            {
+                "kind": "village",
+                "share": 0,
+                "minimum_count": 1,
+                "capacity": 200,
+                "activities": {"agriculture": 1},
+            },
+        ],
+    )
+    places = virtual_map(config)
+    assert sorted(p.capacity for p in places) == [100, 200]
+    assert {next(iter(p.activities)) for p in places} == {"fishing", "agriculture"}
+
+
 def couple(config):
     engine = Engine(config)
     engine.year = config.start_year + 1

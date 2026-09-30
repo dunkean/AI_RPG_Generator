@@ -71,6 +71,9 @@ Un prototype autonome simule les naissances, décès, unions, divorces et migrat
 sur plusieurs générations, avec carte virtuelle, stockage SQLite compact et
 explorateur local des filiations. Aucun LLM ni clé API n'est nécessaire.
 Les peuples fantasy ont leurs propres cycles de vie et des croisements configurables.
+Les proportions de métropoles, villes, bourgs, villages et hameaux, leurs capacités
+et activités se règlent dans `settlement_types` ; des types supplémentaires sont libres.
+Sous Windows, `explore_genealogy.cmd` génère la démo si nécessaire et lance le serveur.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.genealogy.cli generate config/genealogy/fantasy.yaml --output output/genealogy/fantasy.sqlite
