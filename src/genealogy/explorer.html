@@ -1,63 +1,430 @@
 <!doctype html>
 <html lang="fr">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Atlas des lignées</title>
-<style>
-:root{color-scheme:dark;--bg:#11191a;--panel:#1b2525;--line:#35423f;--ink:#e4e6d9;--muted:#a9b7af;--gold:#efbe72;--mint:#8ed8bd}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,sans-serif}
-header{padding:24px 30px;border-bottom:1px solid var(--line);display:flex;gap:24px;align-items:center;justify-content:space-between}
-h1{font:30px Georgia,serif;margin:0 0 5px}h2{font:23px Georgia,serif;margin:0 0 14px}h3{margin:22px 0 10px;font-size:16px}
-p{margin:6px 0;color:var(--muted)}button,input,select{font:inherit;background:#263331;color:var(--ink);border:1px solid #53605a;border-radius:5px;padding:7px 10px}button{cursor:pointer}button:hover{border-color:var(--gold);color:var(--gold)}button.link{padding:3px 7px;border:0;color:var(--mint);background:transparent}label{color:var(--muted)}input[type=number]{width:110px}input[type=range]{width:100%;accent-color:var(--gold)}
-.layout{display:grid;grid-template-columns:minmax(400px,1.2fr) minmax(360px,1fr);gap:20px;padding:24px 30px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;min-width:0}.span{grid-column:1/-1}.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.stats{display:flex;gap:28px;margin:18px 0}.stat b{display:block;font-size:23px;color:var(--gold)}.stat span,.small{font-size:12px;color:var(--muted)}
-svg{display:block;width:100%;background:#15201f;border-radius:6px}#map{height:420px}svg text{font:12px system-ui;fill:var(--ink)}svg .place{cursor:pointer}svg .place:hover circle{stroke:var(--gold);stroke-width:3}.list{display:flex;flex-wrap:wrap;gap:3px;max-height:160px;overflow:auto;margin:10px 0}.badge{display:inline-block;margin:3px;padding:5px 8px;background:#293934;border-radius:4px}.timeline{max-height:330px;overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}td,th{text-align:left;padding:9px 5px;border-bottom:1px solid var(--line)}th{color:var(--muted)}.tree{overflow:auto}#tree{min-width:700px}.error{color:#ffa699}#chart{height:130px}.legend{color:var(--muted);font-size:12px;line-height:1.6}.dot{color:var(--mint)}.gold{color:var(--gold)}
-@media(max-width:900px){.layout{grid-template-columns:1fr;padding:12px}.span{grid-column:auto}header{padding:20px;align-items:flex-start;flex-direction:column}.stats{gap:15px}#map{height:350px}}
-</style>
-<header><div><h1>Atlas des lignées</h1><p>Population, origines et histoires familiales</p></div>
-<form id="search" class="bar"><label for="identity">Individu</label><input id="identity" type="number" min="0" value="0"><button>Explorer</button></form></header>
-<main class="layout">
-<section class="panel"><h2>Territoires</h2><div class="bar"><label for="year">Recensement de fin d'année</label><b id="yearText"></b></div><input id="year" type="range">
-<div id="worldStats" class="stats"></div><svg id="map" viewBox="0 0 720 440" aria-label="Carte des lieux et origines"></svg>
-<p class="legend">Cercles : lieux de vie, taille selon la population. <span class="gold">Or : naissance des ascendants.</span> <span class="dot">Vert : parcours de l'individu.</span> Cliquez sur un lieu pour voir ses habitants à la fin de la simulation.</p>
-<h3 id="placeTitle">Habitants au dernier recensement</h3><div id="residents" class="list"></div><button id="more" hidden>Suivants</button>
-</section>
-<section class="panel"><h2 id="personTitle">Choisir un individu</h2><div id="personInfo"></div><p id="residence"></p><h3>Chronologie de vie</h3><p class="small">Cliquez sur une date pour situer l'événement sur la carte.</p><div class="timeline"><table><thead><tr><th>Date</th><th>Événement</th><th>Lieu</th></tr></thead><tbody id="timeline"></tbody></table></div><h3>Enfants</h3><div id="children" class="list"></div></section>
-<section class="panel span"><div class="bar"><h2 style="margin-right:auto">Liens de filiation</h2><select id="direction"><option value="ancestors">Ascendance</option><option value="descendants">Descendance</option></select><label>Profondeur <select id="depth"><option>2</option><option selected>4</option><option>6</option></select></label></div><p class="small">Chaque nœud est cliquable. Les parents des fondateurs sont inconnus avant le début de la simulation.</p><p id="treeNote"></p><div class="tree"><svg id="tree"></svg></div></section>
-<section class="panel span"><h2>Évolution de la population</h2><svg id="chart" viewBox="0 0 1200 130"></svg><p id="diagnostics" class="small"></p></section>
-<p id="error" class="error span" role="alert"></p>
-</main>
-<script>
-'use strict';
-const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
-let world, person=null, lineage=[], chosenPlace=null, lastResident=-1, focusPlace=null;
-const text=(tag,value,cls)=>{const e=document.createElement(tag);e.textContent=value??'';if(cls)e.className=cls;return e};
-const svg=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);parent.append(e);return e};
-const api=async(path)=>{const r=await fetch('/api/'+path);if(!r.ok)throw Error('Requête invalide : '+path);return r.json()};
-const safely=fn=>async(...args)=>{try{$('error').textContent='';await fn(...args)}catch(e){$('error').textContent=e.message}};
-const placeName=id=>world.settlements.find(p=>p.id===id)?.name??'Inconnu';
-const raceName=id=>world.races.find(r=>r.id===id)?.name??String(id);
-const activityName=id=>world.activities.find(a=>a.id===id)?.name??String(id);
-const personButton=p=>{const b=text('button','#'+p.id+' · '+p.birth,'link');b.onclick=safely(()=>selectPerson(p.id));return b};
-let coordinates;
-function setupMap(){const xs=world.settlements.map(p=>p.x),ys=world.settlements.map(p=>p.y);const xmin=Math.min(...xs),ymin=Math.min(...ys),xspan=Math.max(...xs)-xmin,yspan=Math.max(...ys)-ymin;
-coordinates=new Map(world.settlements.map(p=>[p.id,[xspan?60+(p.x-xmin)/xspan*600:360,yspan?50+(p.y-ymin)/yspan*330:210]]));}
-async function drawMap(){const y=+$('year').value;$('yearText').textContent=y;const counts=await api('map?year='+y),pop=new Map(counts.map(p=>[p.settlement,p.population]));const m=$('map');m.replaceChildren();
-if(person){const path=[person.birth_place,...person.migrations.filter(e=>e.year<=y).map(e=>e.destination)];svg('polyline',{points:path.map(p=>coordinates.get(p)?.join(',')).filter(Boolean).join(' '),fill:'none',stroke:'#8ed8bd','stroke-width':3,opacity:0.75},m);}
-const originIds=new Set(lineage.map(p=>p.birth_place));
-for(const p of world.settlements){const [x,z]=coordinates.get(p.id),g=svg('g',{class:'place',transform:`translate(${x},${z})`},m);const r=5+Math.min(22,Math.sqrt(pop.get(p.id)||0)/5);
-svg('circle',{r,fill:originIds.has(p.id)?'#aa8450':'#477365',stroke:p.id===focusPlace?'#efbe72':'#79958a','stroke-width':p.id===focusPlace?4:1.5},g);const title=svg('title',{},g);title.textContent=p.name+' : '+(pop.get(p.id)||0)+' habitants';const label=svg('text',{x:0,y:r+17,'text-anchor':'middle'},g);label.textContent=p.name;g.onclick=safely(()=>residents(p.id));}
-const h=world.history.find(h=>h.year===y);$('worldStats').replaceChildren();for(const [v,label] of [[h?.population??0,'Habitants'],[h?.births??0,'Naissances'],[h?.deaths??0,'Décès']]){const e=text('div','','stat');e.append(text('b',v.toLocaleString('fr')),text('span',label));$('worldStats').append(e)}
-if(person){const location=await api(`residence?id=${person.id}&year=${y}`);$('residence').textContent=location===null?'Absent du recensement à cette date.':'Résidence en '+y+' : '+placeName(location);if(location!==null){const [x,z]=coordinates.get(location);svg('circle',{cx:x,cy:z,r:4,fill:'#c4ffe4'},m)}}}
-async function residents(id,append=false){if(!append){chosenPlace=id;lastResident=-1;$('residents').replaceChildren()}const list=await api(`residents?place=${id}&after=${lastResident}`);$('placeTitle').textContent=placeName(id)+' · habitants en '+world.summary.end_year;for(const p of list)$('residents').append(personButton(p));if(list.length)lastResident=list.at(-1).id;$('more').hidden=list.length<100;}
-async function selectPerson(id){const selected=await api('person?id='+id);person=selected;$('identity').value=id;$('personTitle').textContent='Individu #'+id+' · '+(person.sex?'Femme':'Homme');$('personInfo').replaceChildren();
-for(const value of ['Peuple : '+raceName(person.race),(person.founder?'Naissance estimée : ':'Naissance : ')+person.birth+' · '+placeName(person.birth_place),'Décès : '+(person.death===null?'vivant au dernier recensement':person.death+' · '+placeName(person.death_place)),'Lignée #'+person.family+' · Niveau social '+person.status+' · '+activityName(person.activity)])$('personInfo').append(text('p',value));
-const parents=text('div');parents.append(text('span','Parents : '));for(const pid of [person.father,person.mother])parents.append(pid===null?text('span','inconnu '):personButton({id:pid,birth:''}));$('personInfo').append(parents);if(person.founder)$('personInfo').append(text('p','Fondateur : origine supposée et histoire connue seulement depuis '+person.history_known_from+'.'));
-const events=[{year:person.birth,label:person.founder?'Naissance estimée':'Naissance',place:person.birth_place}];for(const u of person.unions){events.push({year:u.start,label:(u.start===world.summary.start_year?'Union observée avec #':'Union avec #')+(u.male===id?u.female:u.male),place:u.place});if(u.end!==null)events.push({year:u.end,label:u.reason==='divorce'?'Divorce':'Fin de l’union (décès)',place:null})}for(const m of person.migrations)events.push({year:m.year,label:'Migration depuis '+placeName(m.origin),place:m.destination});for(const c of person.children)events.push({year:c.birth,label:'Naissance de l’enfant #'+c.id,place:c.birth_place});if(person.death!==null)events.push({year:person.death,label:'Décès',place:person.death_place});events.sort((a,b)=>a.year-b.year);
-$('timeline').replaceChildren();for(const e of events){const tr=document.createElement('tr'),td=document.createElement('td'),button=text('button',e.year,'link');button.onclick=safely(async()=>{$('year').value=Math.max(world.summary.start_year,Math.min(world.summary.end_year,e.year));focusPlace=e.place;await drawMap()});td.append(button);tr.append(td,text('td',e.label),text('td',e.place===null?'—':placeName(e.place)));$('timeline').append(tr)}$('children').replaceChildren(...person.children.map(personButton));await drawTree();await drawMap();}
-async function drawTree(){if(!person)return;const result=await api(`lineage?id=${person.id}&depth=${$('depth').value}&direction=${$('direction').value}`);lineage=result.people;$('treeNote').textContent=result.truncated?'Affichage limité à 1 000 individus.':lineage.length+' individus reliés';const all=[{...person,generation:0},...lineage],levels=new Map();for(const p of all){if(!levels.has(p.generation))levels.set(p.generation,[]);levels.get(p.generation).push(p)}const width=Math.max(700,...[...levels.values()].map(l=>l.length*145)),height=(Math.max(...levels.keys())+1)*90+25;const tree=$('tree');tree.setAttribute('viewBox',`0 0 ${width} ${height}`);tree.style.height=height+'px';tree.style.width=width+'px';tree.replaceChildren();const points=new Map();for(const [generation,items] of levels)items.forEach((p,i)=>points.set(p.id,[(i+0.5)*width/items.length,generation*90+40]));
-for(const p of all)for(const parent of [p.father,p.mother]){if(!points.has(parent))continue;const a=points.get(p.id),b=points.get(parent);svg('line',{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'#526d61','stroke-width':1.5},tree)}for(const p of all){const [x,y]=points.get(p.id),g=svg('g',{transform:`translate(${x},${y})`,class:'place'},tree);svg('rect',{x:-61,y:-24,width:122,height:48,rx:5,fill:p.id===person.id?'#3d5549':'#233730',stroke:'#7ca389'},g);const name=svg('text',{'text-anchor':'middle',y:-3},g);name.textContent='#'+p.id+' · '+raceName(p.race);const date=svg('text',{'text-anchor':'middle',y:15},g);date.textContent=p.birth+' → '+(p.death??'vivant');g.onclick=safely(()=>selectPerson(p.id));}}
-function chart(){const h=world.history,max=Math.max(...h.map(h=>h.population),1),c=$('chart');const points=h.map((r,i)=>[20+i/(h.length-1)*1160,110-r.population/max*95]);svg('polyline',{points:points.map(p=>p.join(',')).join(' '),fill:'none',stroke:'#efbe72','stroke-width':2},c);for(const index of [0,h.length-1]){const label=svg('text',{x:points[index][0],y:126,'text-anchor':index?'end':'start'},c);label.textContent=h[index].year}const s=world.summary;$('diagnostics').textContent=s.people_ever.toLocaleString('fr')+' individus enregistrés · '+Math.round(s.birth_year_mortality*100)+' % de mortalité l’année de naissance · '+s.kinship_rejections+' unions écartées pour parenté · '+Object.entries(s.population_by_race).map(([r,n])=>r+' : '+n.toLocaleString('fr')).join(', ')+' · Ascendance des fondateurs inconnue.';}
-$('search').onsubmit=safely(async e=>{e.preventDefault();await selectPerson(+$('identity').value)});$('year').onchange=safely(drawMap);$('depth').onchange=safely(async()=>{await drawTree();await drawMap()});$('direction').onchange=$('depth').onchange;$('more').onclick=safely(()=>residents(chosenPlace,true));
-safely(async()=>{world=await api('overview');$('year').min=world.summary.start_year;$('year').max=world.summary.end_year;$('year').value=world.summary.end_year;setupMap();chart();await drawMap();await residents(world.settlements[0].id);const final=await api('residents?place='+world.settlements[0].id+'&limit=1');await selectPerson(final[0]?.id??0)})();
-</script>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Atlas · Atelier des populations</title>
+    <link rel="stylesheet" href="/studio.css" />
+    <script defer src="/studio.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="seal">A</span>
+        <div>
+          <h1>Atlas</h1>
+          <p>Atelier des populations & des lignées</p>
+        </div>
+      </div>
+      <div class="row">
+        <select id="archives" aria-label="Monde enregistré"></select
+        ><button id="refreshWorld">Charger</button>
+      </div>
+    </header>
+    <nav class="tabs" aria-label="Vues">
+      <button id="tabConfig" class="active">01 · Configurer & générer</button
+      ><button id="tabExplore">02 · Explorer le monde</button>
+    </nav>
+    <div id="progressBox" hidden role="status">
+      <div
+        class="row"
+        style="justify-content: space-between; margin-bottom: 8px"
+      >
+        <b id="progressText"></b><span id="progressCount" class="small"></span>
+      </div>
+      <progress id="progress" max="1" value="0"></progress
+      ><button id="openResult" class="primary" style="margin-top: 10px" hidden>
+        Explorer le résultat →
+      </button>
+    </div>
+    <main>
+      <div id="error" role="alert" hidden></div>
+      <section id="configView">
+        <div class="intro">
+          <div>
+            <div class="eyebrow">Un monde commence par ses habitants</div>
+            <h2>Composez votre simulation</h2>
+            <p>
+              Une graine, des lieux, des règles. Puis laissez vivre les
+              générations.
+            </p>
+          </div>
+          <div class="row">
+            <button id="importButton">Importer YAML / JSON</button
+            ><input
+              id="importFile"
+              type="file"
+              accept=".yaml,.yml,.json"
+              hidden
+            /><button id="exportButton">Exporter la configuration</button>
+          </div>
+        </div>
+        <div class="configLayout">
+          <div class="stack">
+            <div class="card">
+              <div class="head">
+                <h3>01 / Point de départ</h3>
+                <span class="tag">Reproductible</span>
+              </div>
+              <div class="formGrid">
+                <div class="field">
+                  <label for="preset">Scénario</label
+                  ><select id="preset">
+                    <option value="current">Monde actuellement ouvert</option>
+                    <option value="fantasy">Peuples fantasy</option>
+                    <option value="medieval">Médiéval humain</option>
+                    <option value="blank">Paramètres par défaut</option>
+                    <option value="custom" disabled>
+                      Configuration personnalisée
+                    </option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="seed">Graine</label>
+                  <div class="inputRow">
+                    <input id="seed" type="number" min="0" step="1" /><button
+                      id="randomSeed"
+                      title="Nouvelle graine"
+                    >
+                      ↻
+                    </button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="startYear">Année de départ</label
+                  ><input id="startYear" type="number" step="1" />
+                </div>
+                <div class="field">
+                  <label for="founders">Population fondatrice</label
+                  ><input id="founders" type="number" min="2" step="1" />
+                </div>
+                <div class="field">
+                  <label for="target">Population cible · facultative</label
+                  ><input
+                    id="target"
+                    type="number"
+                    min="2"
+                    placeholder="Sans calibration"
+                  />
+                </div>
+                <div class="field">
+                  <label for="generations">Nombre de générations</label
+                  ><input id="generations" type="number" min="1" max="100" />
+                </div>
+                <div class="field">
+                  <label for="generationYears">Années par génération</label
+                  ><input
+                    id="generationYears"
+                    type="number"
+                    min="1"
+                    max="100"
+                  />
+                </div>
+                <div class="field">
+                  <label for="exactYears">Durée exacte · facultative</label
+                  ><input
+                    id="exactYears"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    placeholder="Priorité sur les générations"
+                  />
+                </div>
+                <div class="field">
+                  <label for="places">Nombre de lieux virtuels</label
+                  ><input id="places" type="number" min="1" max="10000" />
+                </div>
+                <div class="field">
+                  <label for="spacing">Distance entre les lieux</label
+                  ><input id="spacing" type="number" min="0.1" step="any" />
+                </div>
+                <div class="field">
+                  <label for="capacityMode">Capacités des lieux</label
+                  ><select id="capacityMode">
+                    <option value="scale">Adapter à la taille du monde</option>
+                    <option value="fixed">Conserver les valeurs exactes</option>
+                  </select>
+                </div>
+              </div>
+              <p class="note" id="mapNotice"></p>
+            </div>
+            <div class="card">
+              <div class="head">
+                <h3>02 / Diversité des lieux</h3>
+                <button id="addPlace">+ Type de lieu</button>
+              </div>
+              <p class="small">
+                Proportions de lieux ; fondateurs répartis selon capacité ×
+                poids initial.
+              </p>
+              <div class="tableWrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Part relative</th>
+                      <th>Minimum</th>
+                      <th>Capacité</th>
+                      <th>Poids initial</th>
+                      <th>Activités · poids</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="placeProfiles"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <details open>
+                <summary>03 / Démographie & société</summary>
+                <div class="formGrid" id="demographicFields"></div>
+                <p class="note">
+                  Taux annuels entre 0 et 1. La fécondité concerne les femmes en
+                  union, selon l'âge et l'espacement des naissances.
+                </p>
+              </details>
+            </div>
+            <div class="card">
+              <details open>
+                <summary>04 / Peuples & cycles de vie</summary>
+                <p class="small">
+                  Cellule vide : héritage des paramètres globaux. Les poids
+                  locaux des lieux peuvent remplacer ces poids globaux.
+                  Croisements et biologie détaillée dans le JSON complet.
+                </p>
+                <div class="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Peuple</th>
+                        <th>Poids fondateurs</th>
+                        <th>Âge maximal</th>
+                        <th>Pic de fécondité</th>
+                        <th>Espacement</th>
+                      </tr>
+                    </thead>
+                    <tbody id="raceProfiles"></tbody>
+                  </table>
+                </div>
+                <div id="crossSummary" class="chips"></div>
+              </details>
+            </div>
+            <div class="card">
+              <div class="head">
+                <h3>05 / Crises & événements</h3>
+                <button id="addEvent">+ Événement</button>
+              </div>
+              <p class="small">
+                Décès supplémentaires annuels ; multiplicateurs de fécondité et
+                migration. Tous les lieux si la liste est vide.
+              </p>
+              <div class="tableWrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nom</th>
+                      <th>Début</th>
+                      <th>Fin</th>
+                      <th>Décès suppl.</th>
+                      <th>Fécondité ×</th>
+                      <th>Migration ×</th>
+                      <th>IDs lieux</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="eventProfiles"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <details id="advanced">
+                <summary>Configuration complète · JSON</summary>
+                <p class="small">
+                  Cartes explicites, races, croisements, périodes et
+                  métadonnées. Appliquez vos modifications pour actualiser les
+                  contrôles.
+                </p>
+                <textarea
+                  id="configJson"
+                  aria-label="Configuration JSON complète"
+                  spellcheck="false"
+                ></textarea>
+                <div class="row" style="margin-top: 12px">
+                  <button id="applyJson">Appliquer le JSON</button
+                  ><button id="discardJson">Annuler l’édition</button
+                  ><span id="configValidated" class="small"></span>
+                </div>
+              </details>
+            </div>
+          </div>
+          <aside>
+            <div class="card summary">
+              <div class="eyebrow">Votre scénario</div>
+              <h2>Prêt à peupler</h2>
+              <div class="metric">
+                <span class="small">Durée simulée</span
+                ><b id="durationPreview"></b
+                ><span id="yearsPreview" class="small"></span>
+              </div>
+              <div class="metric">
+                <span class="small">Carte</span><b id="placesPreview"></b
+                ><span id="typesPreview" class="small"></span>
+              </div>
+              <div class="metric">
+                <span class="small">Population initiale</span
+                ><b id="populationPreview"></b
+                ><span id="targetPreview" class="small"></span>
+              </div>
+              <button id="generate" class="primary">Générer ce monde →</button>
+              <p class="small" style="margin-top: 12px">
+                Chaque génération est enregistrée séparément. Vous pouvez
+                explorer le monde ouvert pendant le calcul.
+              </p>
+              <p class="note">
+                Paramètres de fiction ajustables. La cible est estimée par un
+                pilote ; le résultat peut s'en écarter.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </section>
+      <section id="exploreView" hidden>
+        <div class="intro">
+          <div>
+            <div class="eyebrow" id="worldEyebrow"></div>
+            <h2>La mémoire d'une population</h2>
+            <p id="worldSubtitle"></p>
+          </div>
+          <div class="row">
+            <button id="reuseConfig">Reprendre ses paramètres</button>
+            <form id="search" class="row">
+              <label for="identity" class="small">Individu #</label
+              ><input
+                id="identity"
+                type="number"
+                min="0"
+                value="0"
+                style="width: 105px"
+              /><button class="primary">Explorer</button>
+            </form>
+          </div>
+        </div>
+        <div id="worldMetrics" class="metrics"></div>
+        <div class="exploreLayout">
+          <div class="stack">
+            <div class="card mapCard">
+              <div class="mapHead">
+                <div>
+                  <h3>Répartition & origines</h3>
+                  <span class="small"
+                    >Glisser pour déplacer · molette pour zoomer</span
+                  >
+                </div>
+                <div class="mapTools">
+                  <button id="zoomOut" aria-label="Dézoomer">−</button
+                  ><button id="zoomIn" aria-label="Zoomer">+</button
+                  ><button id="resetMap">Recentrer</button>
+                </div>
+              </div>
+              <svg
+                id="map"
+                viewBox="0 0 800 500"
+                role="img"
+                aria-label="Carte interactive des lieux"
+              ></svg>
+              <div id="mapLegend" class="mapLegend"></div>
+              <div class="mapFooter">
+                <div
+                  class="row"
+                  style="justify-content: space-between; margin-bottom: 10px"
+                >
+                  <label for="year" class="small"
+                    >Recensement de fin d'année</label
+                  ><b id="yearText"></b>
+                </div>
+                <input id="year" type="range" step="1" />
+                <p id="yearStats" class="small" style="margin-top: 9px"></p>
+              </div>
+            </div>
+            <div class="card">
+              <div class="head">
+                <div>
+                  <h3 id="placeTitle">Habitants</h3>
+                  <p id="placeDetail" class="small"></p>
+                </div>
+                <button id="more" hidden>Suivants →</button>
+              </div>
+              <div id="residents" class="chips"></div>
+            </div>
+          </div>
+          <aside class="card">
+            <div class="personHead">
+              <div class="eyebrow">Histoire individuelle</div>
+              <h2 id="personTitle">Choisir un individu</h2>
+              <p id="personTag" class="small"></p>
+            </div>
+            <div id="personFacts" class="facts"></div>
+            <p id="residence" class="small"></p>
+            <h3 style="margin-top: 20px">Parents</h3>
+            <div id="parents" class="chips"></div>
+            <h3 style="margin-top: 20px">Enfants</h3>
+            <div id="children" class="chips"></div>
+            <h3 style="margin-top: 23px">Chronologie</h3>
+            <div id="timeline" class="timeline"></div>
+          </aside>
+        </div>
+        <div class="lowerGrid">
+          <div class="card">
+            <div class="head">
+              <div>
+                <h3>Évolution démographique</h3>
+                <p class="small">Survoler un point pour lire ses valeurs</p>
+              </div>
+              <select id="chartMode" style="width: auto">
+                <option value="population">Population</option>
+                <option value="vital">Naissances & décès</option>
+                <option value="movement">Unions & migrations</option>
+              </select>
+            </div>
+            <svg
+              id="chart"
+              viewBox="0 0 900 230"
+              role="img"
+              aria-label="Évolution démographique"
+            ></svg>
+            <div id="chartLegend" class="chartLegend"></div>
+          </div>
+          <div class="card">
+            <div class="head">
+              <h3>Lieux les plus peuplés</h3>
+              <span id="rankingYear" class="small"></span>
+            </div>
+            <div id="ranking" class="ranking"></div>
+          </div>
+        </div>
+        <div class="card treeCard">
+          <div class="head">
+            <div>
+              <h3>Arbre de filiation</h3>
+              <p id="treeNote" class="small"></p>
+            </div>
+            <div class="row">
+              <select id="direction" style="width: auto">
+                <option value="ancestors">Ascendants</option>
+                <option value="descendants">Descendants</option></select
+              ><select id="depth" aria-label="Profondeur" style="width: auto">
+                <option value="2">2 générations</option>
+                <option value="4" selected>4 générations</option>
+                <option value="6">6 générations</option>
+              </select>
+            </div>
+          </div>
+          <div class="treeScroll">
+            <svg id="tree" aria-label="Arbre familial cliquable"></svg>
+          </div>
+        </div>
+        <p id="diagnostics" class="footerNote"></p>
+      </section>
+    </main>
+  </body>
 </html>

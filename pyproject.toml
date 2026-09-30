@@ -29,7 +29,7 @@ ttrpg-population = "src.genealogy.cli:main"
 include = ["src", "src.*"]
 
 [tool.setuptools.package-data]
-"src.genealogy" = ["explorer.html"]
+"src.genealogy" = ["explorer.html", "studio.css", "studio.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

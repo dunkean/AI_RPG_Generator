@@ -32,7 +32,7 @@ def main():
     query.add_argument("--year", type=int)
     stats = commands.add_parser("stats")
     stats.add_argument("archive", type=Path)
-    serve = commands.add_parser("explore", help="Start the read-only local map and family explorer")
+    serve = commands.add_parser("explore", help="Start the local generation studio and explorer")
     serve.add_argument("archive", type=Path)
     serve.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()

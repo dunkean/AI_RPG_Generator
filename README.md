@@ -74,6 +74,9 @@ Les peuples fantasy ont leurs propres cycles de vie et des croisements configura
 Les proportions de métropoles, villes, bourgs, villages et hameaux, leurs capacités
 et activités se règlent dans `settlement_types` ; des types supplémentaires sont libres.
 Sous Windows, `explore_genealogy.cmd` génère la démo si nécessaire et lance le serveur.
+La page propose un atelier de génération : graine, scénarios, démographie,
+diversité des lieux, peuples, crises et import/export de configuration. Les calculs
+tournent en arrière-plan ; chaque monde reste consultable dans sa propre archive.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.genealogy.cli generate config/genealogy/fantasy.yaml --output output/genealogy/fantasy.sqlite

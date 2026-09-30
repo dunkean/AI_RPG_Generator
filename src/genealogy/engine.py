@@ -800,7 +800,7 @@ class Engine:
         }
 
 
-def generate(config: Scenario, path: Path, progress=None, rules=()):
+def generate(config: Scenario, path: Path, progress=None, rules=(), calibration_progress=None):
     """Publish only a complete archive; never overwrite an existing generation."""
     rules = tuple(rules)
     descriptors = [
@@ -829,7 +829,7 @@ def generate(config: Scenario, path: Path, progress=None, rules=()):
             update={"initial_population": config.calibration_population, "target_population": None}
         )
         pilot_engine = Engine(pilot, rules=rules)
-        pilot_summary = pilot_engine.run()
+        pilot_summary = pilot_engine.run(calibration_progress)
         ratio = pilot_summary["population"] / pilot.initial_population
         if ratio < 0.05:
             raise ValueError(

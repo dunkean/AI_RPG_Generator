@@ -1,4 +1,4 @@
-"""Loopback-only, read-only bounded HTTP views over an archive."""
+"""Loopback studio: asynchronous generation and bounded read-only archive views."""
 
 from __future__ import annotations
 
@@ -8,11 +8,58 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+import yaml
+
 from .store import Archive
+from .studio import BusyError, Studio
 
 
-def make_handler(archive: Archive):
+def make_handler(archive: Archive, studio: Studio | None = None):
+    studio = studio or Studio(archive)
+
     class Handler(BaseHTTPRequestHandler):
+        def reply(self, value, status=200):
+            body = json.dumps(value, ensure_ascii=False).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            # Browser writes must originate on this local server, with JSON content.
+            origin = self.headers.get("Origin")
+            allowed = {
+                f"127.0.0.1:{self.server.server_port}",
+                f"localhost:{self.server.server_port}",
+            }
+            host = self.headers.get("Host")
+            if host not in allowed or origin and origin != f"http://{host}":
+                self.reply({"error": "Origine refusée"}, 403)
+                return
+            if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
+                self.reply({"error": "Envoyer une configuration JSON"}, 415)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 1_000_000:
+                    raise ValueError("Configuration vide ou supérieure à 1 Mo")
+                payload = json.loads(self.rfile.read(length))
+                route = urlsplit(self.path).path
+                if route == "/api/generate":
+                    self.reply(studio.start(payload), 202)
+                elif route == "/api/validate":
+                    self.reply({"scenario": studio.validate(payload).model_dump(mode="json")})
+                elif route == "/api/select":
+                    self.reply(studio.select(payload["id"]))
+                else:
+                    self.reply({"error": "Route inconnue"}, 404)
+            except BusyError as exc:
+                self.reply({"error": str(exc)}, 409)
+            except (ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
+                self.reply({"error": str(exc)}, 400)
+
         def do_GET(self):
             path = urlsplit(self.path)
             query = parse_qs(path.query)
@@ -21,11 +68,30 @@ def make_handler(archive: Archive):
                 return int(query.get(key, [default])[0])
 
             try:
-                if path.path == "/":
-                    body = Path(__file__).with_name("explorer.html").read_bytes()
-                    mime = "text/html; charset=utf-8"
+                archive_id, archive = studio.snapshot(query.get("archive", [None])[0])
+                if path.path in ("/", "/studio.css", "/studio.js"):
+                    asset, mime = {
+                        "/": ("explorer.html", "text/html; charset=utf-8"),
+                        "/studio.css": ("studio.css", "text/css; charset=utf-8"),
+                        "/studio.js": ("studio.js", "application/javascript; charset=utf-8"),
+                    }[path.path]
+                    body = Path(__file__).with_name(asset).read_bytes()
                 else:
-                    if path.path == "/api/overview":
+                    if path.path == "/api/presets":
+                        value = studio.presets()
+                    elif path.path == "/api/job":
+                        value = studio.status()
+                    elif path.path == "/api/archives":
+                        value = studio.catalogue()
+                    elif path.path == "/api/world":
+                        value = {
+                            "archive": archive_id,
+                            "overview": archive.overview(),
+                            "config": studio.config(archive),
+                        }
+                    elif path.path == "/api/config":
+                        value = studio.config(archive)
+                    elif path.path == "/api/overview":
                         value = archive.overview()
                     elif path.path == "/api/person":
                         value = archive.person(integer("id"))
@@ -51,6 +117,7 @@ def make_handler(archive: Archive):
                 self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(body)
             except KeyError:

@@ -23,6 +23,44 @@ archive avec la commande `generate`, puis la passer au lanceur. Une génération
 interrompue peut laisser un fichier `.partial` ; choisir une autre sortie pour
 relancer, ou retirer ce fichier temporaire après avoir arrêté la génération.
 
+La page s'ouvre sur **Configurer & générer** : choisir un scénario médiéval,
+fantasy ou les paramètres par défaut, saisir une graine et ajuster la population,
+la cible facultative, les générations ou la durée exacte. Les types de lieux,
+capacités, activités, taux démographiques, migrations, peuples et crises sont
+éditables dans les tableaux et contrôles. Une cellule biologique de peuple vide
+hérite du réglage global. Le JSON complet donne accès aux croisements, périodes,
+cartes explicites et métadonnées ; pendant son édition, les contrôles sont
+verrouillés jusqu'à application ou annulation pour préserver les changements.
+
+**Générer ce monde** lance un calcul en arrière-plan. La page indique la
+calibration éventuelle, l'année courante, la population et la progression. Un
+seul calcul peut tourner par serveur. À la fin, **Explorer le résultat** ouvre
+le nouveau monde ; l'exploration en cours reste disponible jusque-là.
+Les archives sont enregistrées dans `output/genealogy/web_runs/`, avec une sortie
+distincte à chaque fois. Le menu des mondes permet de revenir aux résultats,
+y compris après redémarrage (les 100 archives les plus récentes sont reprises).
+La graine et le scénario sont conservés dans chaque archive.
+
+L'import accepte YAML et JSON ; l'export télécharge un scénario JSON réutilisable.
+Les champs et configurations sont validés avant le calcul. La vue **Explorer**
+dispose d'une carte déplaçable et zoomable, d'un curseur annuel, d'un classement
+des lieux, de courbes de population / naissances-décès / unions-migrations et
+d'un arbre familial cliquable. Les lectures sont liées à un identifiant de monde
+pour garder les onglets indépendants. Les listes d'habitants concernent toujours
+le recensement final, même si la carte affiche une date antérieure.
+
+Vérification optionnelle du parcours dans un navigateur sans interface visible :
+
+```powershell
+npm.cmd install --prefix tmp/studio_qa playwright --no-save --no-package-lock
+node tests/browser/genealogy_studio.cjs
+```
+
+Ce test utilise Edge installé sous Windows, un serveur déjà lancé sur le port
+8765 et génère une petite archive de test. `STUDIO_URL` et `STUDIO_BROWSER`
+permettent de changer le serveur et l'exécutable. Les captures desktop/mobile
+restent dans `output/genealogy/screenshots/`, hors Git.
+
 Depuis la racine du dépôt, sous PowerShell :
 
 ```powershell

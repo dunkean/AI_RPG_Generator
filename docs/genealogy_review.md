@@ -16,6 +16,27 @@ différentes, lecture répétée de la configuration et sens relatif des affinit
 
 ## Corrections apportées à partir des revues
 
+### Atelier de génération dans le navigateur
+
+La refonte ajoute les réglages de graine, durée, population, lieux, démographie,
+peuples et événements, ainsi que l'import YAML/JSON et l'export JSON. Les calculs
+passent par un travail en arrière-plan ; les archives restent distinctes.
+Sol et Opus ont relu la génération, la validation et les changements de monde.
+Leurs remarques ont conduit à lier chaque lecture à une archive stable, regrouper
+configuration et vue générale, bloquer les champs invalides, protéger les éditions
+JSON, actualiser le scénario courant et préserver la vue à la fin d'un calcul.
+Les IDs d'archive survivent au redémarrage, le catalogue résiste aux fichiers
+manquants, les réglages hérités sont explicites et la calibration signale sa
+progression. La récupération du suivi réessaie après une erreur de connexion.
+
+Validation : **211 tests Python**, Ruff sur les modules concernés et syntaxe JS.
+Un parcours Playwright dans Edge sans interface visible a généré un monde réel
+avec la graine 9876, vérifié les champs invalides, la protection JSON, l'héritage
+racial, la sélection du monde courant et l'absence de débordement mobile. Aucune
+erreur JavaScript n'a été observée. Les captures desktop/mobile ont été inspectées ;
+elles restent hors Git dans `output/genealogy/screenshots/`. Le parcours est
+rejouable avec `tests/browser/genealogy_studio.cjs` (instructions dans le guide).
+
 La diversité configurable des lieux et le lanceur Windows ont également été
 relus par Sol et Opus 5.5. Les quotas ont été vérifiés ; le cas des nombres exacts
 sans proportions a été corrigé, et plusieurs profils d'un même type sont permis.
