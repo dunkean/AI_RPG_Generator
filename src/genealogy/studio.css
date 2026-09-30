@@ -578,3 +578,50 @@ button.primary {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+#previewMap {
+  width: 100%;
+  height: auto;
+  margin-top: 14px;
+  border-radius: 6px;
+}
+#map {
+  height: auto;
+  aspect-ratio: 8/5;
+}
+.mapHead,
+.mapTools {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mapTools select {
+  width: auto;
+  max-width: 170px;
+  font-size: 12px;
+}
+.compositionRow {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin: 9px 0;
+}
+.compositionRow b {
+  font-weight: 500;
+}
+#composition h3 {
+  margin-top: 18px;
+}
+#ageChart {
+  width: 100%;
+  display: block;
+}
+.previewMap {
+  max-width: 100%;
+}
+#placePicker {
+  margin-top: 10px;
+  width: 100%;
+  min-width: 0;
+}

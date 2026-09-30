@@ -7,7 +7,7 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
 )
-set "GENEALOGY_ARCHIVE=output\genealogy\demo_world.sqlite"
+set "GENEALOGY_ARCHIVE=output\genealogy\civilization_v3_1m_500.sqlite"
 if not "%~1"=="" set "GENEALOGY_ARCHIVE=%~1"
 if not exist "%GENEALOGY_ARCHIVE%" (
     if not "%~1"=="" (
@@ -15,7 +15,7 @@ if not exist "%GENEALOGY_ARCHIVE%" (
         pause
         exit /b 1
     )
-    ".venv\Scripts\python.exe" -m src.genealogy.cli generate config/genealogy/fantasy.yaml --output "%GENEALOGY_ARCHIVE%"
+    ".venv\Scripts\python.exe" -m src.genealogy.cli generate config/genealogy/civilization.yaml --years 25 --output "%GENEALOGY_ARCHIVE%"
     if errorlevel 1 (
         pause
         exit /b 1

@@ -10,6 +10,7 @@ import json
 import math
 import time
 from collections import defaultdict
+from copy import deepcopy
 from itertools import pairwise
 from pathlib import Path
 from zlib import crc32
@@ -17,7 +18,8 @@ from zlib import crc32
 import numpy as np
 
 from .config import Demography, Scenario, Society, virtual_map
-from .schema import DTYPE, NO_YEAR
+from .politics import PoliticalTimeline
+from .schema import DTYPE, NO_YEAR, PersonColumns
 from .store import Store
 
 
@@ -92,7 +94,8 @@ class Engine:
             )
             self.activity_sets[place.id] = set(map(int, self.activity_options[place.id][0]))
         self.neighbors = self._neighbors()
-        self.data = np.zeros(max(4096, config.initial_population * 2), dtype=DTYPE)
+        self.politics = PoliticalTimeline(config, self.settlements)
+        self.data = PersonColumns(max(4096, config.initial_population * 2))
         self.n = 0
         self.next_union = 0
         self.year = config.start_year
@@ -101,7 +104,10 @@ class Engine:
         self.rows = []
         self.moves, self.new_unions, self.closed_unions = [], [], []
         self.kin_checks = self.kin_rejections = 0
+        self.timings = defaultdict(float)
+        started = time.perf_counter()
         self._initialize()
+        self.timings["initialize"] = time.perf_counter() - started
 
     def _random_stream(self, process):
         # Isolated draws per process/year; configuration changes do not shift another stream.
@@ -188,9 +194,7 @@ class Engine:
         if self.n + count >= 2**31:
             raise OverflowError("Dense IDs exceed int32; use a partitioned/int64 backend")
         if self.n + count > len(self.data):
-            enlarged = np.zeros(max(self.n + count, len(self.data) * 2), dtype=DTYPE)
-            enlarged[: self.n] = self.data[: self.n]
-            self.data = enlarged
+            self.data.reserve(max(self.n + count, len(self.data) * 2), self.n)
         ids = np.arange(self.n, self.n + count, dtype=np.int32)
         self.n += count
         for field in ("death", "father", "mother", "death_place", "partner", "union"):
@@ -248,18 +252,20 @@ class Engine:
             if not len(selection):
                 continue
             # Stationary survivorship distribution; ancestry before the boundary unknown.
-            survival = np.concatenate(([1.0], np.cumprod(1 - mortality_table(demo)[:-1])))
-            survival[0] *= 1 - demo.infant_mortality
-            survival[-1] = 0  # maximum-age individuals cannot be alive at the initial census
-            if survival.sum() == 0:
-                raise ValueError("No founder survivors under configured infant mortality")
-            ages = self.rng.choice(
-                np.arange(len(survival)), len(selection), p=survival / survival.sum()
-            )
-            self.data["birth"][selection] = self.year - ages
-            self.data["sex"][selection] = (
-                self.rng.random(len(selection)) >= demo.male_birth_probability
-            )
+            sexes = self.rng.random(len(selection)) >= demo.male_birth_probability
+            self.data["sex"][selection] = sexes
+            for sex in (0, 1):
+                group = selection[sexes == sex]
+                mortality = mortality_table(demo)
+                if sex == 0:
+                    mortality = np.minimum(1, mortality * demo.male_mortality_factor)
+                survival = np.cumprod(1 - mortality)
+                if survival.sum() == 0:
+                    raise ValueError("No founder survivors under configured mortality")
+                ages = self.rng.choice(
+                    np.arange(len(survival)), len(group), p=survival / survival.sum()
+                )
+                self.data["birth"][group] = self.year - ages
         self.data["family"][ids] = ids
         status = np.array(self.society.status_weights)
         self.data["status"][ids] = self.rng.choice(len(status), len(ids), p=status / status.sum())
@@ -342,7 +348,183 @@ class Engine:
                     members.add(child)
         return sorted(members)
 
+    def _native_graph(self):
+        """Cache geometry and compatibility; population-dependent pool sizes remain dynamic."""
+        s = self.society
+        owners, marriage, migration = self.politics.at(self.year)
+        key = (
+            self.politics.key,
+            self._period_key,
+            s.marriage_radius,
+            s.migration_radius,
+            s.distance_scale,
+            s.max_neighbors,
+            s.local_marriage_weight,
+        )
+        if getattr(self, "_native_key", None) == key:
+            return
+        self._native_key = key
+        count = len(self.settlements)
+        self.match_slots = np.full((count, s.max_neighbors + 1), -1, np.int32)
+        self.match_weights = np.zeros(self.match_slots.shape)
+        self.move_slots = np.full((count, s.max_neighbors), -1, np.int32)
+        self.move_weights = np.zeros(self.move_slots.shape)
+        for slot, place in enumerate(self.settlements):
+            pairs = [(0, place.id)] + [
+                (dist, pid) for dist, pid in self.neighbors[place.id] if dist <= s.marriage_radius
+            ][: s.max_neighbors]
+            for position, (distance, pid) in enumerate(pairs):
+                self.match_slots[slot, position] = self.place_index[pid]
+                self.match_weights[slot, position] = (
+                    math.exp(-distance / s.distance_scale)
+                    * (s.local_marriage_weight if pid == place.id else 1)
+                    * marriage[owners[slot], owners[self.place_index[pid]]]
+                    * (migration[owners[slot], owners[self.place_index[pid]]] > 0)
+                )
+            pairs = [
+                (dist, pid) for dist, pid in self.neighbors[place.id] if dist <= s.migration_radius
+            ][: s.max_neighbors]
+            for position, (distance, pid) in enumerate(pairs):
+                self.move_slots[slot, position] = self.place_index[pid]
+                self.move_weights[slot, position] = (
+                    math.exp(-distance / s.distance_scale)
+                    * migration[owners[slot], owners[self.place_index[pid]]]
+                )
+        offsets, races, affinity, gaps = [0], [], [], []
+        for first in range(len(self.config.races)):
+            for second, weight in self.race_matches[first]:
+                rule = self.crossbreeding.get(tuple(sorted((first, second))))
+                gap = max(self.race_age_gap[first], self.race_age_gap[second])
+                races.append(second)
+                affinity.append(weight)
+                gaps.append(rule.max_age_gap if rule and rule.max_age_gap is not None else gap)
+            offsets.append(len(races))
+        self.compat_offsets = np.array(offsets, np.int32)
+        self.compat_races = np.array(races, np.int32)
+        self.compat_affinity = np.array(affinity, float)
+        self.compat_gaps = np.array(gaps, np.int32)
+
+    def _apply_moves_batch(self, ids, slots, reason):
+        if not len(ids):
+            return
+        d = self.data
+        changed = d["place_slot"][ids] != slots
+        ids, slots = ids[changed], slots[changed]
+        if not len(ids):
+            return
+        destinations = self.place_ids[slots]
+        self.moves.extend(
+            zip(
+                ids.tolist(),
+                [self.year] * len(ids),
+                d["place"][ids].tolist(),
+                destinations.tolist(),
+                [reason] * len(ids),
+                strict=True,
+            )
+        )
+        d["place"][ids], d["place_slot"][ids] = destinations, slots
+        # Retain compatible occupations, draw replacements in settlement-sized batches.
+        order = np.argsort(slots, kind="stable")
+        grouped = slots[order]
+        bounds = np.r_[0, np.flatnonzero(np.diff(grouped)) + 1, len(ids)]
+        for start, end in pairwise(bounds):
+            selection = ids[order[start:end]]
+            options, weights = self.activity_options[int(self.place_ids[grouped[start]])]
+            unsupported = selection[~np.isin(d["activity"][selection], options)]
+            d["activity"][unsupported] = self.rng.choice(options, len(unsupported), p=weights)
+
+    def _move_households_batch(self, adults, slots, reason):
+        if not len(adults):
+            return
+        dependents = self._dependents()
+        order = np.argsort(adults)
+        sorted_adults = adults[order]
+        positions = np.searchsorted(sorted_adults, dependents.guardians)
+        valid = (positions < len(adults)) & (
+            sorted_adults[np.minimum(positions, len(adults) - 1)] == dependents.guardians
+        )
+        children = dependents.children[valid]
+        child_slots = slots[order[positions[valid]]]
+        self._apply_moves_batch(np.r_[adults, children], np.r_[slots, child_slots], reason)
+
     def _marriages(self, initial=False):
+        if self.config.backend == "reference":
+            return self._marriages_reference(initial)
+        from .kernels import match_pairs
+
+        self._native_graph()
+        d, s, ids = self.data, self.society, self.alive
+        ages, races = self.year - d["birth"][ids], d["race"][ids]
+        eligible = ids[
+            (d["partner"][ids] < 0)
+            & (ages >= self.race_marriage_min[races])
+            & (ages <= self.race_marriage_max[races])
+            & (d["eligible_year"][ids] <= self.year)
+        ]
+        rate = s.founder_match_participation if initial else s.marriage_rate
+        eligible = eligible[self.rng.random(len(eligible)) < rate]
+        men, women = eligible[d["sex"][eligible] == 0], eligible[d["sex"][eligible] == 1].copy()
+        if not len(men) or not len(women):
+            return 0, 0
+        self.rng.shuffle(women)
+        race_count = len(self.config.races)
+        codes = d["place_slot"][men].astype(np.int64) * race_count + d["race"][men]
+        order = np.argsort(codes, kind="stable")
+        keys, offsets, sizes = np.unique(codes[order], return_index=True, return_counts=True)
+        if not hasattr(self, "kin_marks"):
+            self.kin_marks = np.zeros(len(self.data), np.int32)
+            self.kin_stamp = 0
+        elif len(self.kin_marks) < self.n:
+            grown = np.zeros(len(self.data), np.int32)
+            grown[: len(self.kin_marks)] = self.kin_marks
+            self.kin_marks = grown
+        if self.kin_stamp + len(women) >= 2**31:
+            self.kin_marks.fill(0)
+            self.kin_stamp = 0
+        pairs, local, checks, rejected = match_pairs(
+            d["birth"],
+            d["place_slot"],
+            d["race"],
+            d["status"],
+            d["partner"],
+            d["father"],
+            d["mother"],
+            self.kin_marks,
+            self.kin_stamp,
+            men[order].copy(),
+            keys,
+            offsets,
+            sizes,
+            women,
+            self.match_slots,
+            self.match_weights,
+            race_count,
+            self.compat_offsets,
+            self.compat_races,
+            self.compat_affinity,
+            self.compat_gaps,
+            s.status_affinity,
+            s.matching_attempts,
+            s.kinship_depth,
+            {"patrilocal": 0, "matrilocal": 1, "either": 2}[s.residence],
+            int(self.rng.integers(0, 2**31)),
+        )
+        self.kin_stamp += len(women)
+        count = len(pairs)
+        self.kin_checks += checks
+        self.kin_rejections += rejected
+        unions = np.arange(self.next_union, self.next_union + count, dtype=np.int32)
+        d["union"][pairs[:, 0]] = d["union"][pairs[:, 1]] = unions
+        records = np.column_stack(
+            (unions, pairs[:, :2], np.full(count, self.year), self.place_ids[pairs[:, 2]])
+        )
+        self.new_unions.extend(map(tuple, records.tolist()))
+        self.next_union += count
+        self._move_households_batch(pairs[:, :2].ravel(), np.repeat(pairs[:, 2], 2), "marriage")
+        return count, int(local)
+
+    def _marriages_reference(self, initial=False):
         society, d = self.society, self.data
         age = self.year - d["birth"][self.alive]
         races = d["race"][self.alive]
@@ -386,9 +568,13 @@ class Engine:
                     * (society.local_marriage_weight if p == origin else 1)
                     * len(men[p, race]) ** 0.5
                     * affinity
+                    * self.politics.factor(origin, p, self.year, "marriages")
+                    * (self.politics.factor(origin, p, self.year, "migrations") > 0)
                     for dist, p, race, affinity in candidates
                 ]
             )
+            if weights.sum() <= 0:
+                continue
             weights /= weights.sum()
             for _ in range(society.matching_attempts):
                 _, place, race, _ = candidates[int(self.rng.choice(len(candidates), p=weights))]
@@ -427,12 +613,11 @@ class Engine:
         d = self.data
         active = identities[d["union"][identities] >= 0]
         union_ids, positions = np.unique(d["union"][active], return_index=True)
-        for union, pid in zip(union_ids, active[positions], strict=True):
-            partner = int(d["partner"][pid])
-            pair = [int(pid), partner]
-            self.closed_unions.append((self.year, reason, int(union)))
-            d["partner"][pair] = d["union"][pair] = -1
-            d["eligible_year"][pair] = self.year + self.society.remarriage_delay
+        participants = active[positions]
+        pair = np.r_[participants, d["partner"][participants]]
+        self.closed_unions.extend((self.year, reason, int(union)) for union in union_ids)
+        d["partner"][pair] = d["union"][pair] = -1
+        d["eligible_year"][pair] = self.year + self.society.remarriage_delay
         return len(union_ids)
 
     def _events(self, ids, process="diagnostic"):
@@ -565,7 +750,10 @@ class Engine:
         factor, extra, _, _, _ = self._events(ids, "deaths")
         rate = 1 - (1 - scaled_probability(rate, factor)) * (1 - extra)
         rate[ages >= self.race_max_age[races]] = 1
-        dead = np.union1d(ids[self.rng.random(len(ids)) < rate], maternal).astype(np.int32)
+        mortality = self.rng.random(len(ids)) < rate
+        # Living IDs stay ordered: births append larger IDs and deaths only filter.
+        mortality[np.searchsorted(ids, maternal)] = True
+        dead = ids[mortality]
         infants = int(np.sum(self.year - d["birth"][dead] == 0))
         d["death"][dead] = self.year
         d["death_place"][dead] = d["place"][dead]
@@ -574,6 +762,46 @@ class Engine:
         return len(dead), infants
 
     def _migrations(self):
+        if self.config.backend == "reference":
+            return self._migrations_reference()
+        from .kernels import migration_destinations
+
+        self._native_graph()
+        d, s, ids = self.data, self.society, self.alive
+        partner = d["partner"][ids]
+        heads = ids[
+            (
+                (partner < 0)
+                & (self.year - d["birth"][ids] >= self.race_dependent_age[d["race"][ids]])
+            )
+            | ((partner >= 0) & (ids < partner))
+        ]
+        paired = d["partner"][heads] >= 0
+        participants = np.r_[heads, d["partner"][heads[paired]]]
+        _, _, _, factors, capacity_factor = self._events(participants, "migrations")
+        factor = factors[: len(heads)].copy()
+        factor[paired] = np.maximum(factor[paired], factors[len(heads) :])
+        heads = heads[self.rng.random(len(heads)) < np.clip(s.migration_rate * factor, 0, 1)]
+        counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
+        attraction = (
+            np.array([p.capacity for p in self.settlements]) * capacity_factor / (counts + 1)
+        )
+        destinations = migration_destinations(
+            d["place_slot"][heads],
+            self.move_slots,
+            self.move_weights,
+            attraction,
+            int(self.rng.integers(0, 2**31)),
+        )
+        valid = destinations >= 0
+        heads, destinations = heads[valid], destinations[valid]
+        partners = d["partner"][heads]
+        paired = partners >= 0
+        self._move_households_batch(
+            np.r_[heads, partners[paired]], np.r_[destinations, destinations[paired]], "household"
+        )
+
+    def _migrations_reference(self):
         d, society, ids = self.data, self.society, self.alive
         # One decision per couple or single adult, never a second independent spouse roll.
         heads = ids[
@@ -583,11 +811,11 @@ class Engine:
             )
             | ((d["partner"][ids] >= 0) & (ids < d["partner"][ids]))
         ]
-        _, _, _, factor, capacity_factor = self._events(heads, "migrations")
         paired = d["partner"][heads] >= 0
-        if np.any(paired):
-            _, _, _, partner_factor, _ = self._events(d["partner"][heads[paired]], "migrations")
-            factor[paired] = np.maximum(factor[paired], partner_factor)
+        participants = np.r_[heads, d["partner"][heads[paired]]]
+        _, _, _, factors, capacity_factor = self._events(participants, "migrations")
+        factor = factors[: len(heads)].copy()
+        factor[paired] = np.maximum(factor[paired], factors[len(heads) :])
         heads = heads[self.rng.random(len(heads)) < np.clip(society.migration_rate * factor, 0, 1)]
         dependents = self._dependents()
         counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
@@ -605,10 +833,14 @@ class Engine:
                 continue
             weights = np.array(
                 [
-                    math.exp(-dist / society.distance_scale) * attraction[self.place_index[p]]
+                    math.exp(-dist / society.distance_scale)
+                    * attraction[self.place_index[p]]
+                    * self.politics.factor(origin, p, self.year, "migrations")
                     for dist, p in candidates
                 ]
             )
+            if weights.sum() <= 0:
+                continue
             destination = candidates[
                 int(self.rng.choice(len(candidates), p=weights / weights.sum()))
             ][1]
@@ -654,12 +886,56 @@ class Engine:
             local,
         )
         self.rows.append(row)
-        if self.store:
-            places, counts = np.unique(d["place"][ids], return_counts=True)
-            lookup = dict(zip(map(int, places), map(int, counts), strict=True))
-            self.store.census(
-                row, [(self.year, p.id, lookup.get(p.id, 0)) for p in self.settlements]
+        due = (
+            (self.year - self.config.start_year) % self.config.snapshot_interval == 0
+            or self.year == self.config.start_year + self.config.duration
+        )
+        if self.store and due:
+            counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
+            owners, _, _ = self.politics.at(self.year)
+            groups = {
+                "nation": np.bincount(
+                    owners[d["place_slot"][ids]] + 1, minlength=len(self.config.nations) + 1
+                ),
+                "race": np.bincount(races, minlength=len(self.config.races)),
+                "status": np.bincount(d["status"][ids]),
+                "activity": np.bincount(d["activity"][ids]),
+                "age_male": np.bincount(ages[d["sex"][ids] == 0] // 5),
+                "age_female": np.bincount(ages[d["sex"][ids] == 1] // 5),
+            }
+            codes = d["place_slot"][ids].astype(np.int64) * len(self.config.races) + races
+            if len(self.settlements) * len(self.config.races) <= 2_000_000:
+                totals = np.bincount(codes)
+                occupied = np.flatnonzero(totals)
+                values = totals[occupied]
+            else:
+                occupied, values = np.unique(codes, return_counts=True)
+            race_count = len(self.config.races)
+            self.store.distributions(
+                self.year,
+                groups,
+                (
+                    (
+                        self.year,
+                        int(self.place_ids[code // race_count]),
+                        int(code % race_count),
+                        int(count),
+                    )
+                    for code, count in zip(occupied, values, strict=True)
+                ),
             )
+            since = getattr(self, "_stored_row_count", 0)
+            window = self.rows[since:]
+            checkpoint = list(row)
+            for index in (2, 3, 4, 5, 6, 7, 13):
+                checkpoint[index] = sum(entry[index] for entry in window)
+            span = max(1, self.year - getattr(self, "_stored_year", self.year))
+            self.store.census(
+                tuple(checkpoint),
+                [(self.year, p.id, int(counts[i])) for i, p in enumerate(self.settlements)],
+                span,
+            )
+            self._stored_row_count, self._stored_year = len(self.rows), self.year
 
     def _apply_periods(self):
         key = tuple(p.start_year for p in self.config.periods if p.start_year <= self.year)
@@ -737,9 +1013,13 @@ class Engine:
             self.year = year
             self._apply_periods()
             self._random_stream("births")
+            started = time.perf_counter()
             births, maternal = self._births()
+            self.timings["births"] += time.perf_counter() - started
             self._random_stream("deaths")
+            started = time.perf_counter()
             deaths, infants = self._deaths(maternal)
+            self.timings["deaths"] += time.perf_counter() - started
             ids = self.alive[self.data["union"][self.alive] >= 0]
             ids = ids[ids < self.data["partner"][ids]]
             self._random_stream("divorces")
@@ -747,12 +1027,18 @@ class Engine:
                 ids[self.rng.random(len(ids)) < self.society.divorce_rate], "divorce"
             )
             self._random_stream("marriages")
+            started = time.perf_counter()
             marriages, local = self._marriages()
+            self.timings["marriages"] += time.perf_counter() - started
             self._random_stream("migrations")
+            started = time.perf_counter()
             self._migrations()
+            self.timings["migrations"] += time.perf_counter() - started
             migrations = len(self.moves)
+            started = time.perf_counter()
             self._flush_history()
             self._census(births, deaths, marriages, divorces, migrations, infants, local)
+            self.timings["history_and_census"] += time.perf_counter() - started
             if progress:
                 progress(self.year, len(self.alive))
         return self.summary()
@@ -764,6 +1050,13 @@ class Engine:
         marriages = sum(row[4] for row in self.rows)
         return {
             "start_year": self.config.start_year,
+            "backend": self.config.backend,
+            "algorithm_version": "csr-soa-batched-v3"
+            if self.config.backend == "compiled"
+            else "reference-v1",
+            "settlement_count": len(self.settlements),
+            "snapshot_interval": self.config.snapshot_interval,
+            "phase_seconds": dict(self.timings),
             "end_year": self.year,
             "initial_population": self.config.initial_population,
             "population": len(self.alive),
@@ -781,6 +1074,7 @@ class Engine:
             "person_bytes": DTYPE.itemsize,
             "allocated_person_bytes": self.data.nbytes,
             "target_population": self.config.target_population,
+            "target_mode": self.config.target_mode,
             "target_status": (
                 "within_tolerance"
                 if abs(len(self.alive) / self.config.target_population - 1)
@@ -824,25 +1118,59 @@ def generate(config: Scenario, path: Path, progress=None, rules=(), calibration_
         raise FileExistsError(f"Previous incomplete run exists: {staging}")
     started = time.perf_counter()
     calibration = None
-    if config.target_population:
-        pilot = config.model_copy(
-            update={"initial_population": config.calibration_population, "target_population": None}
+    if config.target_population and config.target_mode == "calibrate_founders":
+        sites = len(config.settlements) or config.virtual_settlements
+        # Tiny pilots over hundreds of sites distort the marriage market.
+        pilot_population = min(
+            config.target_population, max(config.calibration_population, min(100000, sites * 200))
         )
-        pilot_engine = Engine(pilot, rules=rules)
-        pilot_summary = pilot_engine.run(calibration_progress)
-        ratio = pilot_summary["population"] / pilot.initial_population
-        if ratio < 0.05:
-            raise ValueError(
-                "Pilot population collapsed; revise demography/events before targeting"
+        initial = config.initial_population
+        iterations = []
+        for _ in range(4):
+            # Match capacity per founder at the proposed full scale. Capacity is soft
+            # demographic pressure, so a linear pilot with unscaled fixed sites is invalid.
+            real = config.model_copy(update={"initial_population": initial})
+            fraction = pilot_population / initial
+            pilot_sites = [
+                p.model_copy(update={"capacity": max(1, round(p.capacity * fraction))})
+                for p in virtual_map(real)
+            ]
+            pilot = config.model_copy(
+                update={
+                    "initial_population": pilot_population,
+                    "target_population": None,
+                    "settlements": pilot_sites,
+                    "capacity_mode": "fixed",
+                }
             )
-        initial = max(2, round(config.target_population / ratio))
-        if initial > 100_000_000:
-            raise ValueError("Calibrated founding population exceeds 100 million")
+            pilot_engine = Engine(pilot, rules=deepcopy(rules))
+            pilot_summary = pilot_engine.run(calibration_progress)
+            ratio = pilot_summary["population"] / pilot.initial_population
+            if ratio < 0.05:
+                raise ValueError(
+                    "Pilot population collapsed; revise demography/events before targeting"
+                )
+            proposed = max(2, round(config.target_population / ratio))
+            iterations.append(
+                {"estimated_initial": initial, "growth_ratio": ratio, "proposed_initial": proposed}
+            )
+            if proposed > 100_000_000:
+                raise ValueError("Calibrated founding population exceeds 100 million")
+            converged = abs(proposed - initial) / initial < 0.02
+            initial = proposed
+            if converged:
+                break
         calibration = {
             "pilot_initial": pilot.initial_population,
             "pilot_final": pilot_summary["population"],
             "growth_ratio": ratio,
             "estimated_initial": initial,
+            "settlements": sites,
+            "founders_per_site": pilot_population / sites,
+            "density_warning": pilot_population / sites < 50,
+            "iterations": iterations,
+            "converged": converged,
+            "method": "density-matched-pilot-estimate",
         }
         config = config.model_copy(update={"initial_population": initial})
         del pilot_engine
@@ -855,7 +1183,7 @@ def generate(config: Scenario, path: Path, progress=None, rules=(), calibration_
         summary["calibration"] = calibration
         summary["rules"] = descriptors
         summary["simulation_seconds"] = time.perf_counter() - started
-        store.finish(engine.data[: engine.n], summary)
+        store.finish(engine.data, summary, engine.n)
         summary["archive_bytes"] = staging.stat().st_size
         summary["total_seconds"] = time.perf_counter() - started
         store.update_summary(summary)

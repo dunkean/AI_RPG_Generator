@@ -40,7 +40,7 @@ let readArchive = null,
 const api = async (path, payload) => {
   if (
     payload === undefined &&
-    /^(world|overview|config|map|person|lineage|residence|residents)([?]|$)/.test(
+    /^(world|overview|config|map|person|lineage|residence|residents|distributions)([?]|$)/.test(
       path,
     ) &&
     !/[?&]archive=/.test(path)
@@ -84,6 +84,8 @@ function checkForm() {
   }
 }
 
+let submittedJob = null,
+  openedJob = null;
 let presets,
   config,
   world,
@@ -116,6 +118,9 @@ const basics = {
   exactYears: "years",
   places: "virtual_settlements",
   spacing: "virtual_spacing",
+  snapshotInterval: "snapshot_interval",
+  targetMode: "target_mode",
+  layout: "spatial_layout",
   capacityMode: "capacity_mode",
 };
 
@@ -198,6 +203,31 @@ function weights(value) {
 }
 
 function renderProfiles() {
+  $("nationProfiles").replaceChildren();
+  config.nations.forEach((n, index) => {
+    const row = el("tr");
+    inputCell(row, n.name, (v) => (n.name = v), { type: "text", wide: true });
+    inputCell(row, n.founded, (v) => (n.founded = v));
+    inputCell(row, n.dissolved, (v) => (n.dissolved = v), { nullable: true });
+    inputCell(row, n.capital, (v) => (n.capital = v), { nullable: true });
+    removeCell(row, config.nations, index);
+    $("nationProfiles").append(row);
+  });
+  $("contactProfiles").replaceChildren();
+  config.nation_contacts.forEach((n, index) => {
+    const row = el("tr");
+    for (let i = 0; i < 2; i++)
+      inputCell(row, n.nations[i], (v) => (n.nations[i] = v), {
+        type: "text",
+        wide: true,
+      });
+    inputCell(row, n.start_year, (v) => (n.start_year = v));
+    inputCell(row, n.end_year, (v) => (n.end_year = v), { nullable: true });
+    for (const key of ["marriage_factor", "migration_factor"])
+      inputCell(row, n[key], (v) => (n[key] = v));
+    removeCell(row, config.nation_contacts, index);
+    $("contactProfiles").append(row);
+  });
   $("placeProfiles").replaceChildren();
   config.settlement_types.forEach((p, index) => {
     const row = document.createElement("tr");
@@ -325,6 +355,14 @@ $("discardJson").onclick = () => syncPreview();
 function syncPreview() {
   setJsonDirty(false);
   const years = config.years ?? config.generations * config.generation_years;
+  $("previewYear").min = config.start_year;
+  $("previewYear").max = config.start_year + years;
+  if (
+    !$("previewYear").value ||
+    Number($("previewYear").value) < config.start_year ||
+    Number($("previewYear").value) > config.start_year + years
+  )
+    $("previewYear").value = config.start_year;
   $("durationPreview").textContent = fmt(years) + " ans";
   $("yearsPreview").textContent =
     config.start_year + " → " + (config.start_year + years);
@@ -339,23 +377,33 @@ function syncPreview() {
     ).size + " types";
   $("populationPreview").textContent = fmt(config.initial_population);
   $("targetPreview").textContent = config.target_population
-    ? "Fondateurs recalibrés · cible " + fmt(config.target_population)
+    ? (config.target_mode === "report"
+        ? "Fondateurs fixés · cible indicative "
+        : "Fondateurs recalibrés · cible ") + fmt(config.target_population)
     : "Sans population cible";
   $("mapNotice").textContent = config.settlements.length
     ? "Carte explicite : nombre virtuel et profils ignorés. Modifier la carte dans le JSON."
     : "Carte virtuelle. Distances dans votre unité ; une génération est une durée.";
+  if (world)
+    $("mapNotice").textContent +=
+      " Archive actuellement affichée : " +
+      world.settlements.length +
+      " lieux. Le résultat sera ouvert automatiquement si vous restez sur cette vue.";
   $("configJson").value = JSON.stringify(config, null, 2);
   $("configValidated").textContent = "";
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => refreshPreview(), 250);
 }
 
 for (const [id, key] of Object.entries(basics)) {
   $(id).required = !["target", "exactYears", "capacityMode"].includes(id);
   $(id).onchange = () => {
-    config[key] =
-      id === "capacityMode"
-        ? $(id).value
-        : ["target", "exactYears"].includes(id) && !$(id).value
-          ? null
+    config[key] = ["capacityMode", "targetMode"].includes(id)
+      ? $(id).value
+      : ["target", "exactYears"].includes(id) && !$(id).value
+        ? null
+        : id === "layout"
+          ? $(id).value
           : Number($(id).value);
     if (id === "generations" || id === "generationYears") {
       config.years = null;
@@ -481,6 +529,7 @@ async function poll() {
     return;
   }
   $("generate").disabled = status.state === "running";
+  $("cancelGeneration").hidden = status.state !== "running";
   $("progressBox").hidden = status.state === "idle";
   $("progress").value = status.progress ?? 0;
   if (status.state === "running") {
@@ -498,18 +547,31 @@ async function poll() {
       Number(status.summary.total_seconds).toFixed(1) + " s";
     await catalogue();
     $("openResult").hidden = false;
-    $("openResult").onclick = safely(async () => {
+    const open = async () => {
       await api("select", { id: status.archive });
       $("archives").value = status.archive;
       await loadWorld();
       tab("explore");
-    });
+      openedJob = status.id;
+    };
+    $("openResult").onclick = safely(open);
+    if (
+      status.id === submittedJob &&
+      openedJob !== status.id &&
+      !$("configView").hidden
+    )
+      await open();
+  } else if (status.state === "cancelled") {
+    $("progressText").textContent = "Calcul arrêté · aucune archive publiée";
   } else if (status.state === "failed") {
     $("progressText").textContent = "Génération interrompue";
     error(Error(status.error));
   }
 }
 
+$("cancelGeneration").onclick = safely(async () => {
+  await api("cancel", {});
+});
 $("generate").onclick = safely(async () => {
   $("generate").disabled = true;
   $("openResult").hidden = true;
@@ -519,7 +581,8 @@ $("generate").onclick = safely(async () => {
       scenario: JSON.parse($("configJson").value),
     });
     populate(validated.scenario);
-    await api("generate", { scenario: config });
+    const job = await api("generate", { scenario: config });
+    submittedJob = job.id;
     clearTimeout(pollTimer);
     await poll();
   } catch (e) {
@@ -579,61 +642,126 @@ function setupMap() {
     ymin = Math.min(...ys),
     dx = Math.max(...xs) - xmin,
     dy = Math.max(...ys) - ymin,
-    s = Math.min(630 / (dx || 1), 345 / (dy || 1));
+    s = Math.min(750 / (dx || 1), 450 / (dy || 1));
   coordinates = new Map(
     world.settlements.map((p) => [
       p.id,
-      [400 + (p.x - xmin - dx / 2) * s, 245 + (p.y - ymin - dy / 2) * s],
+      [400 + (p.x - xmin - dx / 2) * s, 250 + (p.y - ymin - dy / 2) * s],
     ]),
   );
+  mapCells = voronoiCells([...coordinates.values()], [0, 0, 800, 500]);
   view = { x: 0, y: 0, w: 800, h: 500 };
   applyView();
-  $("mapLegend").replaceChildren();
-  for (const k of new Set(world.settlements.map((p) => p.kind))) {
-    const item = el("span"),
-      dot = el("i", "", "dot");
-    dot.style.background = kindColor(k);
-    item.append(dot, el("span", kindLabel(k)));
-    $("mapLegend").append(item);
-  }
-  for (const [color, label] of [
-    ["#cf7840", "Origines familiales"],
-    ["#287366", "Parcours individuel"],
-  ]) {
-    const item = el("span"),
-      dot = el("i", "", "dot");
-    dot.style.background = color;
-    item.append(dot, el("span", label));
-    $("mapLegend").append(item);
-  }
 }
 
-function applyView() {
-  $("map").setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
-  document
-    .querySelectorAll(".mapLabel")
-    .forEach(
-      (e) =>
-        (e.style.display =
-          world?.settlements.length > 64 && view.w > 350 ? "none" : ""),
+let mapCells = [],
+  mapPopulation = new Map(),
+  mapNations = new Map(),
+  initialPopulation = new Map(),
+  mapDistributions = { groups: {}, flows: [] },
+  mapLocation = null,
+  hoverPlace = null;
+function canvasPoints(canvas, places) {
+  const xs = places.map((p) => p.x),
+    ys = places.map((p) => p.y),
+    xmin = Math.min(...xs),
+    ymin = Math.min(...ys),
+    dx = Math.max(...xs) - xmin,
+    dy = Math.max(...ys) - ymin,
+    scale = Math.min(
+      (canvas.width - 35) / (dx || 1),
+      (canvas.height - 35) / (dy || 1),
     );
+  return new Map(
+    places.map((p) => [
+      p.id,
+      [
+        canvas.width / 2 + (p.x - xmin - dx / 2) * scale,
+        canvas.height / 2 + (p.y - ymin - dy / 2) * scale,
+      ],
+    ]),
+  );
 }
-
+let previewTimer,
+  previewEpoch = 0;
+async function refreshPreview() {
+  const request = ++previewEpoch;
+  try {
+    const preview = await api("preview", {
+      scenario: config,
+      year: Number($("previewYear").value),
+    });
+    if (request !== previewEpoch) return;
+    const c = $("previewMap"),
+      ctx = c.getContext("2d"),
+      points = canvasPoints(c, preview.settlements);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = "#edf0e5";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.strokeStyle = "#a6b6a5";
+    ctx.lineWidth = 0.5;
+    for (const poly of voronoiCells(
+      [...points.values()],
+      [0, 0, c.width, c.height],
+    )) {
+      if (!poly) continue;
+      ctx.beginPath();
+      poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+      ctx.stroke();
+    }
+    const kinds = {};
+    for (const p of preview.settlements) {
+      kinds[p.kind] = (kinds[p.kind] || 0) + 1;
+      const [x, y] = points.get(p.id);
+      ctx.beginPath();
+      ctx.arc(
+        x,
+        y,
+        Math.max(1.2, 6 / Math.sqrt(preview.settlements.length / 10)),
+        0,
+        Math.PI * 2,
+      );
+      ctx.fillStyle =
+        $("previewLayer").value === "nations"
+          ? nationColor(p.nation)
+          : kindColor(p.kind);
+      ctx.fill();
+    }
+    $("previewStatus").textContent =
+      preview.settlements.length +
+      " lieux · graine " +
+      preview.seed +
+      " · année " +
+      preview.year +
+      " · " +
+      Object.entries(kinds)
+        .map(([k, n]) => kindLabel(k) + " " + n)
+        .join(" / ");
+    c.dataset.places = preview.settlements.length;
+  } catch (e) {
+    if (request !== previewEpoch) return;
+    $("previewMap").getContext("2d").clearRect(0, 0, 400, 250);
+    $("previewStatus").textContent = "Aperçu invalide : " + e.message;
+  }
+}
+function applyView() {
+  paintMap();
+}
 function zoom(factor) {
-  const w = Math.max(160, Math.min(1600, view.w * factor)),
+  const w = Math.max(40, Math.min(1600, view.w * factor)),
     h = (w * 500) / 800;
   view.x += (view.w - w) / 2;
   view.y += (view.h - h) / 2;
   view.w = w;
   view.h = h;
-  applyView();
+  paintMap();
 }
-
 $("zoomIn").onclick = () => zoom(0.8);
 $("zoomOut").onclick = () => zoom(1.25);
 $("resetMap").onclick = () => {
   view = { x: 0, y: 0, w: 800, h: 500 };
-  applyView();
+  paintMap();
 };
 $("map").addEventListener(
   "wheel",
@@ -643,197 +771,388 @@ $("map").addEventListener(
   },
   { passive: false },
 );
+function hitPlace(e) {
+  if (!world) return null;
+  const box = $("map").getBoundingClientRect(),
+    x = view.x + ((e.clientX - box.left) * view.w) / box.width,
+    y = view.y + ((e.clientY - box.top) * view.h) / box.height;
+  let nearest = null,
+    distance = Infinity;
+  for (const p of world.settlements) {
+    const point = coordinates.get(p.id),
+      d = Math.hypot(x - point[0], y - point[1]);
+    if (d < distance) {
+      distance = d;
+      nearest = p.id;
+    }
+  }
+  return distance < Math.max(8, view.w / 80) ? nearest : null;
+}
 let drag = null;
 $("map").onpointerdown = (e) => {
-  if (e.target.closest(".place")) return;
-  drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
+  drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
   $("map").setPointerCapture(e.pointerId);
 };
 $("map").onpointermove = (e) => {
-  if (!drag) return;
-  const box = $("map").getBoundingClientRect();
-  view.x = drag.vx - ((e.clientX - drag.x) * view.w) / box.width;
-  view.y = drag.vy - ((e.clientY - drag.y) * view.h) / box.height;
-  applyView();
+  if (drag) {
+    const dx = e.clientX - drag.x,
+      dy = e.clientY - drag.y;
+    drag.moved ||= Math.hypot(dx, dy) > 4;
+    if (drag.moved) {
+      const box = $("map").getBoundingClientRect();
+      view.x = drag.vx - (dx * view.w) / box.width;
+      view.y = drag.vy - (dy * view.h) / box.height;
+      paintMap();
+    }
+  } else {
+    hoverPlace = hitPlace(e);
+    const p = place(hoverPlace);
+    $("mapHover").textContent = p
+      ? p.name +
+        " · " +
+        kindLabel(p.kind) +
+        " · " +
+        fmt(mapPopulation.get(p.id)) +
+        " habitants · ID " +
+        p.id
+      : "Survoler un lieu pour lire son effectif ; cliquer pour explorer.";
+  }
 };
-$("map").onpointerup = $("map").onpointercancel = () => (drag = null);
-
-async function drawMap() {
-  const request = ++mapEpoch,
-    y = Number($("year").value),
-    data = await api("map?year=" + y);
-  if (request !== mapEpoch) return;
-  counts = data;
-  const pop = new Map(data.map((p) => [p.settlement, p.population])),
-    m = $("map");
-  m.replaceChildren();
-  $("yearText").textContent = y;
-  for (let x = 40; x < 800; x += 40)
-    svg(
-      "line",
-      { x1: x, y1: 0, x2: x, y2: 500, stroke: "#dde4d5", "stroke-width": 0.6 },
-      m,
+$("map").onpointerup = safely(async (e) => {
+  const moved = drag?.moved;
+  drag = null;
+  if (!moved) {
+    const id = hitPlace(e);
+    if (id !== null) {
+      await residents(id);
+      paintMap();
+    }
+  }
+});
+$("map").onpointercancel = () => (drag = null);
+function paintMap() {
+  if (!world || !$("map").getContext) return;
+  const c = $("map"),
+    ctx = c.getContext("2d"),
+    sx = c.width / view.w,
+    sy = c.height / view.h;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#edf0e5";
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.setTransform(sx, 0, 0, sy, -view.x * sx, -view.y * sy);
+  ctx.lineWidth = view.w / 1500;
+  ctx.strokeStyle = "#a6b6a5";
+  renderMapLegend();
+  const layer = $("mapLayer").value,
+    max = Math.max(...mapPopulation.values(), 1),
+    origins = new Set(lineage.map((p) => p.birth_place));
+  for (let i = 0; i < mapCells.length; i++) {
+    const polygon = mapCells[i];
+    if (!polygon) continue;
+    const p = world.settlements[i],
+      pop = mapPopulation.get(p.id) || 0;
+    ctx.fillStyle =
+      layer === "population"
+        ? pop
+          ? "hsl(153 30% " +
+            (94 - (32 * Math.log1p(pop)) / Math.log1p(max)) +
+            "%)"
+          : "#e5e9df"
+        : layer === "growth"
+          ? pop < (initialPopulation.get(p.id) || 0)
+            ? "#edceca"
+            : "#c7e1df"
+          : layer === "nations"
+            ? nationColor(mapNations.get(p.id) ?? -1)
+            : "#e5e9df";
+    ctx.beginPath();
+    polygon.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  if (layer === "flows") {
+    const maxFlow = Math.max(
+      ...mapDistributions.flows.map((f) => f.population),
+      1,
     );
-  for (let z = 20; z < 500; z += 40)
-    svg(
-      "line",
-      { x1: 0, y1: z, x2: 800, y2: z, stroke: "#dde4d5", "stroke-width": 0.6 },
-      m,
-    );
-  const label = svg(
-    "text",
-    { x: 24, y: 28, fill: "#7f927d", "font-size": 10, "letter-spacing": 2 },
-    m,
-  );
-  label.textContent = "CARTE / " + y;
-
-  if (person && y >= person.birth) {
+    for (const f of mapDistributions.flows) {
+      const a = coordinates.get(f.origin),
+        b = coordinates.get(f.destination);
+      if (!a || !b) continue;
+      ctx.strokeStyle = "#6485b188";
+      ctx.lineWidth = ((0.4 + (2 * f.population) / maxFlow) * view.w) / 800;
+      ctx.beginPath();
+      ctx.moveTo(...a);
+      ctx.lineTo(...b);
+      ctx.stroke();
+    }
+  }
+  if (person && selectedYear() >= person.birth) {
     const path = [
       person.birth_place,
-      ...person.migrations.filter((e) => e.year <= y).map((e) => e.destination),
+      ...person.migrations
+        .filter((m) => m.year <= selectedYear())
+        .map((m) => m.destination),
     ];
-    svg(
-      "polyline",
-      {
-        points: path
-          .map((p) => coordinates.get(p)?.join(","))
-          .filter(Boolean)
-          .join(" "),
-        fill: "none",
-        stroke: "#287366",
-        "stroke-width": 2.5,
-        "stroke-dasharray": "5 5",
-        opacity: 0.8,
-      },
-      m,
-    );
-  }
-
-  const origins = new Set(lineage.map((p) => p.birth_place));
-  for (const p of world.settlements) {
-    const [x, z] = coordinates.get(p.id),
-      g = svg(
-        "g",
-        {
-          class: "place",
-          transform: `translate(${x},${z})`,
-          tabindex: 0,
-          role: "button",
-          "aria-label": p.name + " " + fmt(pop.get(p.id)) + " habitants",
-        },
-        m,
-      ),
-      r =
-        (6 + Math.min(23, Math.sqrt(pop.get(p.id) || 0) / 4)) *
-        Math.min(1, 4 / Math.sqrt(world.settlements.length));
-    if (origins.has(p.id))
-      svg(
-        "circle",
-        { r: r + 5, fill: "none", stroke: "#cf7840", "stroke-width": 2 },
-        g,
-      );
-    const attrs = {
-      fill: kindColor(p.kind),
-      stroke: p.id === chosenPlace ? "#243c40" : "#fffefa",
-      "stroke-width": p.id === chosenPlace ? 3 : 1.5,
-      class: "marker",
-    };
-    if (["city", "metropolis", "town"].includes(p.kind))
-      svg(
-        "rect",
-        {
-          x: -r,
-          y: -r,
-          width: r * 2,
-          height: r * 2,
-          rx: p.kind === "town" ? 5 : 2,
-          ...attrs,
-        },
-        g,
-      );
-    else if (p.kind === "port")
-      svg("polygon", { points: `0,${-r} ${r},${r} ${-r},${r}`, ...attrs }, g);
-    else svg("circle", { r, ...attrs }, g);
-    const title = svg("title", {}, g);
-    title.textContent =
-      p.name +
-      " · " +
-      kindLabel(p.kind) +
-      "\n" +
-      fmt(pop.get(p.id)) +
-      " habitants · capacité initiale " +
-      fmt(p.capacity);
-    const name = svg(
-      "text",
-      {
-        y: r + 17,
-        "text-anchor": "middle",
-        "font-size": 11,
-        fill: "#243c40",
-        "font-weight": 600,
-        class: "mapLabel",
-      },
-      g,
-    );
-    name.textContent = p.name;
-    const total = svg(
-      "text",
-      {
-        y: r + 31,
-        "text-anchor": "middle",
-        "font-size": 10,
-        fill: "#788575",
-        class: "mapLabel",
-      },
-      g,
-    );
-    total.textContent = fmt(pop.get(p.id));
-    g.onclick = safely(async () => {
-      await residents(p.id);
-      await drawMap();
+    ctx.strokeStyle = "#244e54";
+    ctx.lineWidth = (1.8 * view.w) / 800;
+    ctx.setLineDash([(4 * view.w) / 800, (4 * view.w) / 800]);
+    ctx.beginPath();
+    path.forEach((id, i) => {
+      const point = coordinates.get(id);
+      if (point) {
+        if (i === 0) ctx.moveTo(...point);
+        else ctx.lineTo(...point);
+      }
     });
-    g.onkeydown = (e) => {
-      if (e.key === "Enter") g.onclick();
-    };
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
-
-  applyView();
+  for (const p of world.settlements) {
+    const [x, y] = coordinates.get(p.id),
+      pop = mapPopulation.get(p.id) || 0,
+      r = Math.max(
+        1.8,
+        (3 + 11 * Math.sqrt(pop / max)) *
+          Math.min(1, 8 / Math.sqrt(world.settlements.length)),
+      ),
+      relative = pop / Math.max(initialPopulation.get(p.id) || 0, 1) - 1;
+    let color = kindColor(p.kind);
+    if (layer === "population")
+      color = pop
+        ? "hsl(153 37% " +
+          (82 - (46 * Math.log1p(pop)) / Math.log1p(max)) +
+          "%)"
+        : "#adb8aa";
+    if (layer === "growth") color = relative < 0 ? "#bb6460" : "#398c93";
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    if (["city", "metropolis", "town"].includes(p.kind))
+      ctx.rect(x - r, y - r, r * 2, r * 2);
+    else ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (origins.has(p.id) || p.id === chosenPlace || p.id === mapLocation) {
+      ctx.strokeStyle = origins.has(p.id) ? "#cc7845" : "#203c40";
+      ctx.lineWidth = (1.2 * view.w) / 800;
+      ctx.beginPath();
+      ctx.arc(x, y, r + (2 * view.w) / 800, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (
+      world.settlements.length <= 64 ||
+      view.w < 170 ||
+      p.id === chosenPlace
+    ) {
+      ctx.font = (10 * view.w) / 800 + "px system-ui";
+      ctx.fillStyle = "#263f40";
+      ctx.textAlign = "center";
+      ctx.fillText(p.name, x, y + r + (12 * view.w) / 800);
+      ctx.font = (9 * view.w) / 800 + "px system-ui";
+      ctx.fillText(fmt(pop), x, y + r + (23 * view.w) / 800);
+    }
+  }
+  c.dataset.places = world.settlements.length;
+  c.dataset.year = selectedYear();
+  c.dataset.population = [...mapPopulation.values()].reduce((a, b) => a + b, 0);
+}
+async function drawMap() {
+  const request = ++mapEpoch,
+    y = selectedYear(),
+    race = $("raceFilter").value;
+  const [data, distributions, baseline] = await Promise.all([
+    api("map?year=" + y + (race !== "" ? "&race=" + race : "")),
+    api("distributions?year=" + y),
+    api(
+      "map?year=" +
+        loadedConfig.start_year +
+        (race !== "" ? "&race=" + race : ""),
+    ),
+  ]);
+  if (request !== mapEpoch) return;
+  counts = data;
+  mapNations = new Map(data.map((p) => [p.settlement, p.nation]));
+  initialPopulation = new Map(
+    baseline.map((p) => [p.settlement, p.population]),
+  );
+  mapPopulation = new Map(data.map((p) => [p.settlement, p.population]));
+  mapDistributions = distributions;
+  mapLocation = null;
+  if (
+    person &&
+    y >= person.history_known_from &&
+    y >= person.birth &&
+    (person.death === null || y < person.death)
+  ) {
+    mapLocation = person.birth_place;
+    for (const m of person.migrations) {
+      if (m.year > y) break;
+      mapLocation = m.destination;
+    }
+  }
+  $("residence").textContent = person
+    ? mapLocation === null
+      ? "Absent du recensement en " + y
+      : "Résidence en " + y + " : " + placeName(mapLocation)
+    : "";
+  $("yearText").textContent = y;
   const h = world.history.find((h) => h.year === y);
   $("yearStats").textContent =
     fmt(h?.population) +
-    " habitants · " +
+    " habitants dans le monde · " +
     fmt(h?.births) +
     " naissances · " +
     fmt(h?.deaths) +
-    " décès · " +
-    fmt(h?.migrations) +
-    " déplacements";
-  drawRanking(pop, y);
-  if (person) {
-    const location = await api(`residence?id=${person.id}&year=${y}`);
-    if (request !== mapEpoch) return;
-    $("residence").textContent =
-      location === null
-        ? "Absent du recensement en " + y
-        : "Résidence en " + y + " : " + placeName(location);
-    if (location !== null) {
-      const [x, z] = coordinates.get(location);
-      svg(
-        "circle",
-        {
-          cx: x,
-          cy: z,
-          r: 4,
-          fill: "#fffefa",
-          stroke: "#287366",
-          "stroke-width": 2,
-        },
-        m,
-      );
+    " décès sur " +
+    (h?.span || 1) +
+    " an(s)" +
+    (race !== ""
+      ? " · carte filtrée : " +
+        raceName(Number(race)) +
+        " (" +
+        fmt([...mapPopulation.values()].reduce((a, b) => a + b, 0)) +
+        ")"
+      : "");
+  paintMap();
+  drawRanking(mapPopulation, y);
+  drawDistributions(distributions, y);
+}
+$("mapLayer").onchange = paintMap;
+$("raceFilter").onchange = safely(drawMap);
+$("placePicker").onchange = safely(async () => {
+  await residents(Number($("placePicker").value));
+  paintMap();
+});
+function drawDistributions(value, y) {
+  const age = $("ageChart"),
+    composition = $("composition");
+  age.replaceChildren();
+  composition.replaceChildren();
+  $("distributionYear").textContent = y;
+  if (!value.available) {
+    composition.append(
+      el(
+        "p",
+        "Agrégats indisponibles dans cette ancienne archive. Régénérez pour les obtenir.",
+        "small",
+      ),
+    );
+    return;
+  }
+  const maxBand = Math.max(
+      ...(value.groups.age_male || []).map((r) => r.category),
+      ...(value.groups.age_female || []).map((r) => r.category),
+      0,
+    ),
+    bandSize = Math.max(1, Math.ceil((maxBand + 1) / 25));
+  const aggregate = (rows) => {
+    const result = new Map();
+    for (const r of rows) {
+      const key = Math.floor(r.category / bandSize);
+      result.set(key, (result.get(key) || 0) + r.population);
     }
+    return result;
+  };
+  const males = aggregate(value.groups.age_male || []),
+    females = aggregate(value.groups.age_female || []),
+    bands = [...new Set([...males.keys(), ...females.keys()])].sort(
+      (a, b) => b - a,
+    ),
+    maximum = Math.max(...males.values(), ...females.values(), 1),
+    height = Math.max(240, bands.length * 17 + 40);
+  age.setAttribute("viewBox", `0 0 700 ${height}`);
+  age.style.height = Math.min(450, height) + "px";
+  const maleLabel = svg(
+    "text",
+    {
+      x: 160,
+      y: 18,
+      "text-anchor": "middle",
+      fill: "#6485b1",
+      "font-size": 12,
+    },
+    age,
+  );
+  maleLabel.textContent = "Hommes";
+  const femaleLabel = svg(
+    "text",
+    {
+      x: 530,
+      y: 18,
+      "text-anchor": "middle",
+      fill: "#287366",
+      "font-size": 12,
+    },
+    age,
+  );
+  femaleLabel.textContent = "Femmes";
+  bands.forEach((band, i) => {
+    const yy = 34 + i * 17,
+      m = males.get(band) || 0,
+      f = females.get(band) || 0;
+    for (const [n, x, color] of [
+      [m, 330 - (m / maximum) * 275, "#6485b1"],
+      [f, 370, "#287366"],
+    ]) {
+      const rect = svg(
+        "rect",
+        { x, y: yy, width: (n / maximum) * 275, height: 12, fill: color },
+        age,
+      );
+      svg("title", {}, rect).textContent =
+        band * bandSize * 5 +
+        "–" +
+        (band * bandSize * 5 + bandSize * 5 - 1) +
+        " ans : " +
+        fmt(n);
+    }
+    const label = svg(
+      "text",
+      {
+        x: 350,
+        y: yy + 10,
+        "text-anchor": "middle",
+        fill: "#6e8178",
+        "font-size": 9,
+      },
+      age,
+    );
+    label.textContent =
+      band * bandSize * 5 + "–" + (band * bandSize * 5 + bandSize * 5 - 1);
+  });
+  for (const [kind, label, name] of [
+    ["nation", "Nations", (i) => nationName(i - 1)],
+    ["race", "Peuples", raceName],
+    ["status", "Niveaux sociaux", (i) => "Niveau " + i],
+    ["activity", "Activités", activityName],
+  ]) {
+    const section = el("div");
+    section.append(el("h3", label));
+    const rows = value.groups[kind] || [],
+      total = rows.reduce((n, r) => n + r.population, 0);
+    for (const r of rows) {
+      const item = el("div", "", "compositionRow"),
+        track = el("span", "", "track"),
+        fill = el("span", "", "fill");
+      fill.style.width = (r.population / Math.max(total, 1)) * 100 + "%";
+      fill.style.background = kind === "race" ? "#6485b1" : "#287366";
+      track.append(fill);
+      item.append(
+        el("span", name(r.category)),
+        track,
+        el(
+          "b",
+          fmt(r.population) +
+            " · " +
+            ((r.population / Math.max(total, 1)) * 100).toFixed(1) +
+            " %",
+        ),
+      );
+      section.append(item);
+    }
+    composition.append(section);
   }
 }
-
 function drawRanking(pop, y) {
   $("rankingYear").textContent = y;
   $("ranking").replaceChildren();
@@ -868,6 +1187,7 @@ async function residents(id, append = false) {
   }
   const list = await api(`residents?place=${id}&after=${lastResident}`);
   if (request !== residentsEpoch) return;
+  $("placePicker").value = id;
   $("placeTitle").textContent = placeName(id);
   $("placeDetail").textContent =
     kindLabel(place(id).kind) +
@@ -977,10 +1297,7 @@ async function selectPerson(id) {
       body.onclick = safely(() => selectPerson(e.person));
     }
     date.onclick = safely(async () => {
-      $("year").value = Math.max(
-        world.summary.start_year,
-        Math.min(world.summary.end_year, e.year),
-      );
+      $("year").value = nearestSnapshot(e.year);
       if (e.place !== null) chosenPlace = e.place;
       await drawMap();
     });
@@ -1091,20 +1408,31 @@ function chart() {
     series =
       mode === "vital"
         ? [
-            ["births", "Naissances", "#287366"],
-            ["deaths", "Décès", "#b85353"],
+            ["births", "Naissances · moyenne/an", "#287366"],
+            ["deaths", "Décès · moyenne/an", "#b85353"],
           ]
         : mode === "movement"
           ? [
-              ["marriages", "Unions", "#b7974f"],
-              ["migrations", "Déplacements", "#6485b1"],
+              ["marriages", "Unions · moyenne/an", "#b7974f"],
+              ["migrations", "Déplacements · moyenne/an", "#6485b1"],
             ]
           : [["population", "Habitants", "#287366"]],
-    h = world.history,
+    h = world.history.map((r) => ({
+      ...r,
+      ...Object.fromEntries(
+        ["births", "deaths", "marriages", "divorces", "migrations"].map(
+          (key) => [key, r[key] / (r.span || 1)],
+        ),
+      ),
+    })),
     max = Math.max(...h.flatMap((r) => series.map(([key]) => r[key])), 1) * 1.1,
     c = $("chart");
   c.replaceChildren();
-  const x = (i) => 60 + (i / Math.max(h.length - 1, 1)) * 815,
+  const x = (i) =>
+      60 +
+      ((h[i].year - world.summary.start_year) /
+        Math.max(world.summary.end_year - world.summary.start_year, 1)) *
+        815,
     y = (value) => 185 - (value / max) * 160;
   for (let i = 0; i <= 4; i++) {
     const yy = 185 - i * 40;
@@ -1138,16 +1466,21 @@ function chart() {
     label.textContent = h[index].year;
   }
 
+  const xYear = (year) =>
+    60 +
+    ((year - world.summary.start_year) /
+      Math.max(world.summary.end_year - world.summary.start_year, 1)) *
+      815;
   for (const event of loadedConfig.events) {
-    const first = Math.max(0, event.start_year - world.summary.start_year),
-      last = Math.min(h.length - 1, event.end_year - world.summary.start_year);
+    const first = Math.max(world.summary.start_year, event.start_year),
+      last = Math.min(world.summary.end_year, event.end_year);
     if (last < first) continue;
     const area = svg(
         "rect",
         {
-          x: x(first),
+          x: xYear(first),
           y: 25,
-          width: Math.max(2, x(last) - x(first)),
+          width: Math.max(2, xYear(last) - xYear(first)),
           height: 160,
           fill: "#cf7840",
           opacity: 0.1,
@@ -1200,7 +1533,7 @@ function chart() {
       " · " +
       series.map(([key, label]) => label + " : " + fmt(r[key])).join(" · ");
     hover.onclick = safely(async () => {
-      $("year").value = r.year;
+      $("year").value = world.history.findIndex((h) => h.year === r.year);
       await drawMap();
     });
   });
@@ -1232,6 +1565,8 @@ async function loadWorld() {
   loadedConfig = bundle.config;
   presets.current = clone(loadedConfig);
   const s = world.summary;
+  $("tabExplore").textContent =
+    "02 · Explorer (" + world.settlements.length + " lieux)";
   $("worldEyebrow").textContent =
     "Graine " +
     loadedConfig.seed +
@@ -1260,9 +1595,29 @@ async function loadWorld() {
     card.append(el("span", label, "small"), el("b", fmt(value)));
     $("worldMetrics").append(card);
   }
-  $("year").min = s.start_year;
-  $("year").max = s.end_year;
-  $("year").value = s.end_year;
+  $("year").min = 0;
+  $("year").max = world.history.length - 1;
+  $("year").value = world.history.length - 1;
+  $("raceFilter").replaceChildren(el("option", "Tous les peuples"));
+  $("raceFilter").firstChild.value = "";
+  for (const r of world.races) {
+    const o = el("option", r.name);
+    o.value = r.id;
+    $("raceFilter").append(o);
+  }
+  $("placePicker").replaceChildren(
+    ...world.settlements.map((p) => {
+      const o = el("option", p.id + " · " + p.name);
+      o.value = p.id;
+      return o;
+    }),
+  );
+  initialPopulation = new Map(
+    (await api("map?year=" + s.start_year)).map((p) => [
+      p.settlement,
+      p.population,
+    ]),
+  );
   setupMap();
   chart();
   await drawMap();
@@ -1329,3 +1684,95 @@ safely(async () => {
   const status = await api("job");
   if (status.state !== "idle") await poll();
 })();
+
+function voronoiCells(points, bounds) {
+  return Array.from(d3.Delaunay.from(points).voronoi(bounds).cellPolygons());
+}
+
+$("addNation").onclick = () => {
+  config.nations.push({
+    name: "nation_" + config.nations.length,
+    founded: config.start_year,
+    dissolved: null,
+    capital: null,
+    metadata: {},
+  });
+  renderProfiles();
+  syncPreview();
+};
+$("addContact").onclick = safely(() => {
+  if (config.nations.length < 2)
+    throw Error("Créer deux nations avant un contact.");
+  config.nation_contacts.push({
+    nations: config.nations.slice(0, 2).map((n) => n.name),
+    start_year: config.start_year,
+    end_year: null,
+    marriage_factor: 1,
+    migration_factor: 1,
+    metadata: {},
+  });
+  renderProfiles();
+  syncPreview();
+});
+const nationColor = (i) =>
+  i < 0 ? "#c6cebd" : `hsl(${(i * 137.508) % 360} 38% 74%)`;
+const nationName = (i) =>
+  i < 0
+    ? "Territoire indépendant"
+    : loadedConfig.nations[i]?.name || "Nation " + i;
+
+function renderMapLegend() {
+  const layer = $("mapLayer").value;
+  let entries = [];
+  if (layer === "kind")
+    entries = [...new Set(world.settlements.map((p) => p.kind))].map((k) => [
+      kindColor(k),
+      kindLabel(k),
+    ]);
+  if (layer === "population")
+    entries = [
+      ["#d5e6d9", "Faible effectif"],
+      ["#397c62", "Fort effectif · échelle logarithmique"],
+    ];
+  if (layer === "growth")
+    entries = [
+      ["#bb6460", "Baisse depuis le début"],
+      ["#398c93", "Hausse depuis le début"],
+    ];
+  if (layer === "flows")
+    entries = [["#769a91", "150 principaux flux annuels · toutes ascendances"]];
+  if (layer === "nations")
+    entries = [...new Set(counts.map((r) => r.nation))].map((i) => [
+      nationColor(i),
+      nationName(i),
+    ]);
+  entries.push(
+    ["#cf7840", "Origines familiales"],
+    ["#287366", "Parcours individuel"],
+  );
+  $("mapLegend").replaceChildren(
+    ...entries.map(([color, label]) => {
+      const item = el("span"),
+        dot = el("i", "", "dot");
+      dot.style.background = color;
+      item.append(dot, el("span", label));
+      return item;
+    }),
+  );
+}
+
+function selectedYear() {
+  return world.history[Number($("year").value)]?.year ?? world.summary.end_year;
+}
+
+function nearestSnapshot(year) {
+  return world.history.reduce(
+    (best, h, i) =>
+      Math.abs(h.year - year) < Math.abs(world.history[best].year - year)
+        ? i
+        : best,
+    0,
+  );
+}
+
+$("previewLayer").onchange = $("previewYear").onchange = safely(refreshPreview);

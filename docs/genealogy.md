@@ -13,7 +13,7 @@ une histoire cohérente, mesurable et ajustable avant d'y greffer le monde.
 ## Lancer et explorer
 
 Sous Windows, double-cliquer sur `explore_genealogy.cmd` : il génère la démo
-fantasy si nécessaire, puis sert l'explorateur sur http://127.0.0.1:8765.
+un monde de référence d’un million de fondateurs / 500 lieux si nécessaire, puis sert l'explorateur sur http://127.0.0.1:8765.
 Garder sa fenêtre ouverte pendant la consultation. On peut aussi lui passer
 le chemin d'une archive existante. L'HTML dépend de ce serveur local.
 Le lanceur exige un environnement local : `python -m venv .venv`, puis
@@ -34,8 +34,7 @@ verrouillés jusqu'à application ou annulation pour préserver les changements.
 
 **Générer ce monde** lance un calcul en arrière-plan. La page indique la
 calibration éventuelle, l'année courante, la population et la progression. Un
-seul calcul peut tourner par serveur. À la fin, **Explorer le résultat** ouvre
-le nouveau monde ; l'exploration en cours reste disponible jusque-là.
+seul calcul peut tourner par serveur. À la fin, le résultat s’ouvre automatiquement si cet onglet est resté sur la configuration. Si une exploration est en cours, **Explorer le résultat** permet de basculer explicitement.
 Les archives sont enregistrées dans `output/genealogy/web_runs/`, avec une sortie
 distincte à chaque fois. Le menu des mondes permet de revenir aux résultats,
 y compris après redémarrage (les 100 archives les plus récentes sont reprises).
@@ -98,7 +97,7 @@ La carte virtuelle utilise `settlement_types`, une liste extensible de profils.
 Par défaut : métropoles, villes, bourgs, villages et hameaux. Le scénario fantasy
 ajoute ports et villages miniers. Chaque profil configure `kind`, `share`,
 `minimum_count`, `capacity`, `initial_weight`, `activities`, `races` et `metadata`.
-Les types sont répartis sur la grille selon la graine du scénario.
+Les types et positions sont répartis selon la graine du scénario. `spatial_layout: dispersed` (défaut) disperse les lieux, `clustered` crée des bassins de peuplement ; `grid` reste une option de comparaison. La carte et l’aperçu utilisent des cellules de Voronoï.
 
 `minimum_count` réserve d'abord des lieux ; les places restantes sont distribuées
 proportionnellement à `share`, arrondies par les plus grands restes. La somme
@@ -142,7 +141,7 @@ les tailles voulues. Il ne s'agit pas du multiplicateur des profils virtuels.
 Les `races` locales remplacent complètement les poids globaux pour les fondateurs
 du lieu ; les catégories omises y sont absentes au départ. La composition globale
 est donc le résultat des distributions locales, puis des unions et migrations.
-Les IDs virtuels désignent des positions de grille : changer la graine ou le
+Les IDs virtuels désignent des lieux de la distribution : changer la graine ou le
 catalogue peut changer les types touchés par un événement ciblant ces IDs.
 
 ## Temps, fondateurs et filiations
@@ -334,8 +333,8 @@ Les capacités effectives sont sauvegardées dans la table `settlements`.
 .\.venv\Scripts\python.exe -m src.genealogy.cli generate config/genealogy/medieval.yaml --target 1000000 --output output/genealogy/kingdom.sqlite
 ```
 
-La cible n'ajoute pas des naissances artificielles. Un pilote estime le rapport
-population finale/fondateurs, puis ajuste **le nombre initial de personnes**.
+La cible n'ajoute pas des naissances artificielles. Des pilotes à capacité par fondateur équivalente estiment le rapport
+population finale/fondateurs, puis ajustent **le nombre initial de personnes** lorsque `target_mode: calibrate_founders`. Le pilote est densifié pour éviter un marché matrimonial presque vide, et une itération affine l’estimation jusqu’à quatre essais.
 Cette estimation reste approximative, surtout si les petits marchés matrimoniaux,
 capacités fixes ou fortes crises rendent la croissance non linéaire.
 `calibration_population` augmente la taille du pilote ; `target_tolerance`
@@ -344,7 +343,9 @@ et `target_status: within_tolerance` ou `outside_tolerance`. Elle ne prétend
 pas réussir une cible manquée. Un pilote qui s'effondre presque entièrement
 est refusé avant la génération complète.
 
-Si `target_population` est renseigné, `initial_population` devient une
+Avec `target_mode: report`, les fondateurs restent fixés, la cible est seulement comparée au résultat. Pour une contrainte « 1 million initial, 50 millions final », utiliser ce mode et ajuster la démographie : ce prototype ne garantit pas de trouver automatiquement ces paramètres.
+
+Avec `target_mode: calibrate_founders` et `target_population`, `initial_population` devient une
 estimation remplacée par le pilote. Pour imposer les fondateurs, laisser la
 cible vide et constater la population obtenue. Une extinction est un résultat
 possible, conservé avec toute son histoire.
@@ -406,7 +407,9 @@ L'archive SQLite normalise les tables :
 | `people` | Sexe, années, parents, lieux, lignée, niveau, spécialité, peuple |
 | `unions` | Partenaires, début, fin, motif, lieu de formation/observation |
 | `migrations` | Personne, année, origine, destination, motif |
-| `census`, `settlement_census` | Effectifs et événements par année et lieu |
+| `census`, `settlement_census` | Recensements espacés ; événements de la fenêtre entre recensements |
+| `population_census`, `settlement_race_census` | Âges, sexes, activités, peuples et nations aux dates de recensement |
+| `migration_flows` | Flux agrégés sur la fenêtre entre recensements |
 | `settlements`, `races`, `activities` | Catalogues partagés |
 | `metadata`, `person_annotations` | Configuration, diagnostics, métadonnées facultatives |
 
@@ -424,7 +427,7 @@ avec un pic temporaire plus élevé lors d'une réallocation. Dix millions de
 personnes enregistrées représentent déjà 580 Mo de données de base, avant
 réserve, tableaux temporaires et événements de l'année. Quelques millions
 de vivants sur plusieurs siècles peuvent représenter beaucoup plus de personnes
-enregistrées. Les unions restent une boucle Python à tentatives bornées.
+enregistrées. L’appariement utilise un noyau Numba natif sur des pools CSR ; le contrôle exact de parenté n’est pas désactivé pour gagner du temps. Les migrations de foyers sont appliquées par lots. `backend: reference` conserve le chemin Python pour comparaison ; les tirages diffèrent entre backends.
 La limite d'identifiants est `2**31 - 1`. Le graphe est creux en mémoire, mais
 la construction peut encore faire beaucoup de comparaisons si tous les lieux
 sont géographiquement concentrés.
@@ -463,7 +466,7 @@ Les groupes sont différents suivant le processus ; une règle doit être sans
 effet secondaire, car elle peut être appelée plusieurs fois par année.
 `engine.stream("nom_unique", process)` fournit un flux reproductible par année
 et processus, qui avance entre les appels au lieu de recommencer les tirages.
-Les mêmes règles s'appliquent au pilote et au run complet. Définir un
+Les mêmes règles s’appliquent au pilote et au run complet ; les objets du pilote sont copiés pour ne pas transmettre leur état à la simulation finale. Définir un
 `descriptor` sérialisable avec nom, version et paramètres pour rendre leur
 provenance exploitable ; sans lui, seul le type Python est enregistré.
 
@@ -492,3 +495,81 @@ non-chevauchement des unions, parents vivants à la naissance, espacement,
 mortalité néonatale, contrôle des proches parents, garde et migrations,
 calendriers négatifs, peuples minoritaires, hybrides, périodes partielles,
 archives en lecture seule et réponses de l'API locale.
+
+
+## Recensements espacés, événements exacts
+
+`snapshot_interval: 10` enregistre les recensements tous les dix ans, ainsi que
+les dates initiale et finale. Valeurs 1, 25, 50, 100… possibles. La simulation
+reste annuelle : les dates individuelles de naissance, décès, union et migration
+ne sont ni arrondies ni supprimées. Un run de 1 000 ans / 500 lieux sauvegarde
+101 recensements et 50 500 effectifs locaux, au lieu de 1 001 / 500 500.
+
+`census.span` est la durée de la fenêtre précédente ; naissances, décès,
+unions et déplacements sont les totaux de cette fenêtre. Les courbes affichent
+leur moyenne par an. Le curseur parcourt les recensements disponibles ; cliquer
+une date individuelle affiche le recensement le plus proche, sans modifier cette
+date. Les données agrégées d’une année absente ne sont pas inventées.
+
+## Nations, frontières et filiations
+
+Les nations sont des identités politiques indépendantes des races :
+
+```yaml
+nations:
+  - {name: Valdorie, founded: 1000, dissolved: 1300, capital: 0}
+  - {name: Marches, founded: 1100, capital: 20}
+territory_mode: nearest_capital
+foreign_marriage_factor: 0
+foreign_migration_factor: 0
+nation_contacts:
+  - nations: [Valdorie, Marches]
+    start_year: 1150
+    end_year: 1250
+    marriage_factor: 0.2
+    migration_factor: 0.5
+```
+
+Les intervalles sont `[début, fin)` ; la disparition est effective dès son année.
+Avec `nearest_capital`, les lieux suivent la capitale active la plus proche.
+`territories` fournit des revendications datées qui remplacent localement cette
+répartition. `territory_mode: explicit` laisse les lieux non revendiqués
+indépendants. Les capitales implicites sont déterministes indépendamment de
+l’ordre des IDs fournis. Les revendications qui se chevauchent sont rejetées.
+
+Un contact règle séparément les unions et les migrations ; un facteur de migration
+nul interdit aussi un déplacement conjugal. Les lieux indépendants restent ouverts.
+L’annexion d’un lieu change la souveraineté de ses résidents sans créer une migration.
+Ce sont des changements politiques **configurés**, pas une émergence endogène de
+conquêtes/scissions. Les frontières sont une première couche spatiale, sans routes,
+relief, obstacles ni modèle de connexité territoriale.
+
+Les divorces, veuvages et remariages sont simulés : `divorce_rate`,
+`remarriage_delay`, dates/motifs de fermeture des unions, demi-fratries et garde
+maternelle puis paternelle. **L’adultère et une filiation reconnue distincte de la
+filiation biologique ne sont pas encore modélisés**. Le père biologique est
+actuellement le conjoint de la mère à la naissance. Le contrôle de parenté porte
+sur les ancêtres connus jusqu’à `kinship_depth` ; ceux des fondateurs restent inconnus.
+
+## Export binaire compact
+
+```powershell
+.\.venv\Scripts\python.exe -m src.genealogy.cli compact output/genealogy/world.sqlite --output output/genealogy/world_compact
+```
+
+L’export produit des fichiers NumPy `.npy` accessibles par mémoire mappée :
+IDs implicites, dates relatives sur 16 bits, parents sur 32 bits, lieux par indices
+sur 16 bits, sexe/niveau compactés, catalogues partagés. **21 octets/personne**
+dans le cas courant ; les catalogues plus grands élargissent les champs nécessaires.
+La lignée patrilinéaire se déduit des parents au lieu d’être répétée dans chaque fiche.
+Les unions (15 octets/épisode), migrations (11 octets/déplacement), annotations et
+recensements espacés restent séparés. Les événements et dates sont conservés sans
+perte ; aucune généalogie n’est inventée à la lecture. Les inconnus ont des sentinelles.
+
+`CompactArchive` permet une lecture directe d’un individu et de ses ascendants.
+Le serveur utilise encore SQLite pour ses index et sa pagination. Cet export ne
+supprime donc **pas encore** le coût initial d’insertion/indexation SQL : le futur
+backend massif devra écrire directement ces blocs et séparer les vivants des morts.
+50 millions de fiches courantes représenteraient 1,05 Go de personnes, mais les
+ancêtres décédés, unions et déplacements augmentent ce total. Le seuil de 50 millions
+sur 1 000 ans en une ou dix minutes n’est pas démontré.

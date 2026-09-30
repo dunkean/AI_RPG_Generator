@@ -20,6 +20,10 @@ class BusyError(ValueError):
     pass
 
 
+class CancelledError(RuntimeError):
+    pass
+
+
 class Studio:
     def __init__(self, archive: Archive, output_dir: Path | None = None):
         self.lock = threading.RLock()
@@ -30,6 +34,7 @@ class Studio:
         self.active = "initial"
         self.job = None
         self.worker = None
+        self.cancel_event = threading.Event()
         paths = sorted(self.output_dir.glob("world_*.sqlite"), key=lambda p: p.stat().st_mtime)
         for path in paths[-100:]:
             try:
@@ -44,11 +49,13 @@ class Studio:
     def describe(archive):
         with closing(archive.connect()) as db:
             metadata = dict(db.execute("SELECT key,value FROM metadata"))
+        scenario = json.loads(metadata["config"])
         return {
             "name": archive.path.name,
             "seed": json.loads(metadata["config"])["seed"],
             "summary": json.loads(metadata["summary"]),
             "created": archive.path.stat().st_mtime,
+            "places": len(scenario.get("settlements", [])) or scenario["virtual_settlements"],
         }
 
     def current(self):
@@ -70,7 +77,7 @@ class Studio:
     def presets(self):
         directory = Path(__file__).resolve().parents[2] / "config" / "genealogy"
         result = {"current": self.config()}
-        for name in ("medieval", "fantasy"):
+        for name in ("civilization", "medieval", "fantasy"):
             path = directory / f"{name}.yaml"
             if path.is_file():
                 result[name] = load_scenario(path).model_dump(mode="json")
@@ -111,6 +118,7 @@ class Studio:
             if self.job and self.job["state"] == "running":
                 raise BusyError("Une génération est déjà en cours.")
             key = uuid4().hex
+            self.cancel_event.clear()
             self.job = {
                 "id": key,
                 "state": "running",
@@ -118,22 +126,33 @@ class Studio:
                 "start_year": config.start_year,
                 "end_year": config.start_year + config.duration,
                 "population": config.calibration_population
-                if config.target_population
+                if config.target_population and config.target_mode == "calibrate_founders"
                 else config.initial_population,
                 "progress": 0,
                 "phase": "Calibration · échantillon"
-                if config.target_population
+                if config.target_population and config.target_mode == "calibrate_founders"
                 else "Simulation annuelle",
             }
             self.worker = threading.Thread(target=self._run, args=(key, config), daemon=True)
             self.worker.start()
             return dict(self.job)
 
+    def cancel(self):
+        with self.lock:
+            if self.job and self.job["state"] == "running":
+                self.cancel_event.set()
+                self.job["phase"] = "Arrêt demandé · fin de l'année courante"
+            return self.status()
+
     def _run(self, key, config):
         path = self.output_dir / f"world_{key}.sqlite"
-        pilot_weight = 0.25 if config.target_population else 0
+        pilot_weight = (
+            0.25 if config.target_population and config.target_mode == "calibrate_founders" else 0
+        )
 
         def calibration_progress(year, count):
+            if self.cancel_event.is_set():
+                raise CancelledError("Génération annulée")
             with self.lock:
                 self.job.update(
                     year=year,
@@ -143,6 +162,8 @@ class Studio:
                 )
 
         def progress(year, count):
+            if self.cancel_event.is_set():
+                raise CancelledError("Génération annulée")
             with self.lock:
                 self.job.update(
                     year=year,
@@ -168,4 +189,7 @@ class Studio:
             except OSError:
                 pass
             with self.lock:
-                self.job.update(state="failed", error=str(exc))
+                self.job.update(
+                    state="cancelled" if isinstance(exc, CancelledError) else "failed",
+                    error=str(exc),
+                )

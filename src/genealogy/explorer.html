@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Atlas · Atelier des populations</title>
     <link rel="stylesheet" href="/studio.css" />
+    <script defer src="/d3-delaunay.min.js"></script>
     <script defer src="/studio.js"></script>
   </head>
   <body>
@@ -32,7 +33,9 @@
       >
         <b id="progressText"></b><span id="progressCount" class="small"></span>
       </div>
-      <progress id="progress" max="1" value="0"></progress
+      <button id="cancelGeneration" style="margin-bottom: 8px" hidden>
+        Arrêter le calcul</button
+      ><progress id="progress" max="1" value="0"></progress
       ><button id="openResult" class="primary" style="margin-top: 10px" hidden>
         Explorer le résultat →
       </button>
@@ -70,6 +73,9 @@
                 <div class="field">
                   <label for="preset">Scénario</label
                   ><select id="preset">
+                    <option value="civilization">
+                      Civilisation · 1 million / 500 lieux
+                    </option>
                     <option value="current">Monde actuellement ouvert</option>
                     <option value="fantasy">Peuples fantasy</option>
                     <option value="medieval">Médiéval humain</option>
@@ -97,6 +103,17 @@
                 <div class="field">
                   <label for="founders">Population fondatrice</label
                   ><input id="founders" type="number" min="2" step="1" />
+                </div>
+                <div class="field">
+                  <label for="targetMode">Gestion de la cible</label
+                  ><select id="targetMode">
+                    <option value="report">
+                      Fondateurs fixés · mesurer l’écart
+                    </option>
+                    <option value="calibrate_founders">
+                      Calibrer le nombre de fondateurs
+                    </option>
+                  </select>
                 </div>
                 <div class="field">
                   <label for="target">Population cible · facultative</label
@@ -135,7 +152,25 @@
                   ><input id="places" type="number" min="1" max="10000" />
                 </div>
                 <div class="field">
-                  <label for="spacing">Distance entre les lieux</label
+                  <label for="layout">Distribution spatiale</label
+                  ><select id="layout">
+                    <option value="dispersed">Dispersée</option>
+                    <option value="clustered">Bassin de peuplement</option>
+                    <option value="grid">Grille de comparaison</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="snapshotInterval"
+                    >Recensement tous les … ans</label
+                  ><input
+                    id="snapshotInterval"
+                    type="number"
+                    min="1"
+                    max="10000"
+                  />
+                </div>
+                <div class="field">
+                  <label for="spacing">Échelle des distances</label
                   ><input id="spacing" type="number" min="0.1" step="any" />
                 </div>
                 <div class="field">
@@ -237,6 +272,49 @@
               </div>
             </div>
             <div class="card">
+              <details open>
+                <summary>06 / Nations & frontières datées</summary>
+                <p class="small">
+                  Sans territoires explicites, zones autour des capitales
+                  actives. Une disparition redistribue les zones ; elle ne
+                  déplace pas les habitants. Contacts étrangers fermés par
+                  défaut. Territoires et annexions précis dans le JSON.
+                </p>
+                <button id="addNation">+ Nation</button>
+                <div class="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Nation</th>
+                        <th>Fondation</th>
+                        <th>Disparition</th>
+                        <th>Capitale · ID</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="nationProfiles"></tbody>
+                  </table>
+                </div>
+                <button id="addContact">+ Contact entre pays</button>
+                <div class="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Pays A</th>
+                        <th>Pays B</th>
+                        <th>Début</th>
+                        <th>Fin</th>
+                        <th>Unions ×</th>
+                        <th>Migrations ×</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="contactProfiles"></tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+            <div class="card">
               <details id="advanced">
                 <summary>Configuration complète · JSON</summary>
                 <p class="small">
@@ -268,7 +346,24 @@
               </div>
               <div class="metric">
                 <span class="small">Carte</span><b id="placesPreview"></b
-                ><span id="typesPreview" class="small"></span>
+                ><span id="typesPreview" class="small"></span
+                ><canvas
+                  id="previewMap"
+                  width="400"
+                  height="250"
+                  aria-label="Aperçu de la carte configurée"
+                ></canvas>
+                <div class="row">
+                  <select id="previewLayer" aria-label="Couche d’aperçu">
+                    <option value="kind">Types de lieux</option>
+                    <option value="nations">Nations</option></select
+                  ><input
+                    id="previewYear"
+                    type="number"
+                    aria-label="Année d’aperçu politique"
+                  />
+                </div>
+                <p id="previewStatus" class="small"></p>
               </div>
               <div class="metric">
                 <span class="small">Population initiale</span
@@ -282,7 +377,8 @@
               </p>
               <p class="note">
                 Paramètres de fiction ajustables. La cible est estimée par un
-                pilote ; le résultat peut s'en écarter.
+                pilote si la calibration des fondateurs est choisie ; sinon leur
+                nombre reste fixé. La cible peut ne pas être atteinte.
               </p>
             </div>
           </aside>
@@ -321,17 +417,27 @@
                   >
                 </div>
                 <div class="mapTools">
+                  <select id="raceFilter" aria-label="Peuple affiché"></select
+                  ><select id="mapLayer" aria-label="Couche de carte">
+                    <option value="population">Population</option>
+                    <option value="kind">Types de lieux</option>
+                    <option value="nations">Nations</option>
+                    <option value="growth">Croissance</option>
+                    <option value="flows">Déplacements</option>
+                  </select>
                   <button id="zoomOut" aria-label="Dézoomer">−</button
                   ><button id="zoomIn" aria-label="Zoomer">+</button
                   ><button id="resetMap">Recentrer</button>
                 </div>
               </div>
-              <svg
+              <canvas
                 id="map"
-                viewBox="0 0 800 500"
+                width="1200"
+                height="750"
                 role="img"
                 aria-label="Carte interactive des lieux"
-              ></svg>
+              ></canvas>
+              <p id="mapHover" class="small" style="padding: 8px 22px"></p>
               <div id="mapLegend" class="mapLegend"></div>
               <div class="mapFooter">
                 <div
@@ -350,6 +456,10 @@
               <div class="head">
                 <div>
                   <h3 id="placeTitle">Habitants</h3>
+                  <select
+                    id="placePicker"
+                    aria-label="Lieu à explorer"
+                  ></select>
                   <p id="placeDetail" class="small"></p>
                 </div>
                 <button id="more" hidden>Suivants →</button>
@@ -400,6 +510,19 @@
               <span id="rankingYear" class="small"></span>
             </div>
             <div id="ranking" class="ranking"></div>
+          </div>
+        </div>
+        <div class="lowerGrid">
+          <div class="card">
+            <div class="head">
+              <h3>Pyramide des âges</h3>
+              <span id="distributionYear" class="small"></span>
+            </div>
+            <svg id="ageChart" role="img" aria-label="Pyramide des âges"></svg>
+          </div>
+          <div class="card">
+            <h3>Structure de la population</h3>
+            <div id="composition"></div>
           </div>
         </div>
         <div class="card treeCard">

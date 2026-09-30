@@ -1,0 +1,38 @@
+# A civilization-scale exact individual chronology, not synthetic genealogy sampling.
+schema_version: 1
+backend: compiled
+seed: 42
+start_year: 1000
+initial_population: 1000000
+generations: 6
+generation_years: 25
+virtual_settlements: 500
+virtual_spacing: 20
+capacity_mode: scale
+spatial_layout: dispersed
+snapshot_interval: 10
+nations:
+  - name: Valdorie
+    founded: 1000
+    capital: 25
+  - name: Ligue des Marches
+    founded: 1000
+    capital: 310
+  - name: Couronne de Sel
+    founded: 1075
+    capital: 420
+nation_contacts:
+  - nations: [Valdorie, Ligue des Marches]
+    start_year: 1000
+    marriage_factor: 0.35
+    migration_factor: 0.6
+  - nations: [Ligue des Marches, Couronne de Sel]
+    start_year: 1075
+    marriage_factor: 0.15
+    migration_factor: 0.4
+society:
+  migration_rate: 0.01
+  kinship_depth: 3
+  matching_attempts: 12
+metadata:
+  description: Exact civilization chronology with dated political identities.

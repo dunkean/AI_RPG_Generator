@@ -7,6 +7,7 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "numpy>=1.24",
+    "numba>=0.67,<0.68",
     "pynames>=0.2",
     "shortuuid>=1.0",
     "jinja2>=3.1",
@@ -29,7 +30,7 @@ ttrpg-population = "src.genealogy.cli:main"
 include = ["src", "src.*"]
 
 [tool.setuptools.package-data]
-"src.genealogy" = ["explorer.html", "studio.css", "studio.js"]
+"src.genealogy" = ["explorer.html", "studio.css", "studio.js", "vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

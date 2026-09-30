@@ -14,7 +14,7 @@ from src.genealogy.store import Archive
 
 
 def scenario(**changes):
-    return Scenario.model_validate({"initial_population": 300, "years": 30, **changes})
+    return Scenario.model_validate({"initial_population": 300, "years": 30, "snapshot_interval": 1, **changes})
 
 
 def quiet_demography(**changes):
@@ -546,7 +546,8 @@ def test_generate_calibration_respects_custom_rules(tmp_path):
     result = generate(config, tmp_path / "rules.sqlite", rules=[NoBirths()])
     assert result["births"] == 0
     pilot = Engine(
-        scenario(initial_population=config.calibration_population, years=10), rules=[NoBirths()]
+        scenario(initial_population=result["calibration"]["pilot_initial"], years=10),
+        rules=[NoBirths()],
     )
     expected = pilot.run()["population"]
     assert result["calibration"]["pilot_final"] == expected

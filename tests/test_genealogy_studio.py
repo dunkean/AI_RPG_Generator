@@ -153,3 +153,28 @@ def test_studio_http_validation_generation_assets_and_origin(studio):
         finally:
             server.shutdown()
             worker.join(timeout=5)
+
+
+def test_cancelled_job_does_not_publish_archive_and_can_retry(studio, monkeypatch):
+    from src.genealogy.engine import generate as real_generate
+
+    entered, release = threading.Event(), threading.Event()
+
+    def paused(config, path, progress, **kwargs):
+        entered.set()
+        assert release.wait(timeout=5)
+        progress(config.start_year + 1, config.initial_population)
+
+    monkeypatch.setattr("src.genealogy.studio.generate", paused)
+    studio.start({"scenario": {"initial_population": 30, "years": 2}})
+    assert entered.wait(timeout=5)
+    studio.cancel()
+    release.set()
+    studio.worker.join(timeout=5)
+    assert studio.status()["state"] == "cancelled"
+    assert len(studio.catalogue()["archives"]) == 1
+    assert not list(studio.output_dir.glob("*.partial"))
+    monkeypatch.setattr("src.genealogy.studio.generate", real_generate)
+    studio.start({"scenario": {"initial_population": 30, "years": 2}})
+    studio.worker.join(timeout=10)
+    assert studio.status()["state"] == "complete"

@@ -24,6 +24,11 @@ def main():
     build.add_argument("--years", type=int)
     build.add_argument("--target", type=int)
     build.add_argument("--quiet", action="store_true")
+    compact = commands.add_parser(
+        "compact", help="Export exact life histories as packed binary arrays"
+    )
+    compact.add_argument("archive", type=Path)
+    compact.add_argument("--output", type=Path, required=True)
     query = commands.add_parser("person", help="Inspect life, unions, migrations and ancestry")
     query.add_argument("archive", type=Path)
     query.add_argument("id", type=int)
@@ -57,6 +62,10 @@ def main():
                     print(f"{year}: {count:,} living", file=sys.stderr)
 
             result = generate(config, args.output, None if args.quiet else progress)
+        elif args.command == "compact":
+            from .compact import export_compact
+
+            result = export_compact(args.archive, args.output)
         elif args.command == "person":
             archive = Archive(args.archive)
             result = {

@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import Counter
 from contextlib import closing
 from hashlib import sha256
 from pathlib import Path
 
+from .config import Scenario, Settlement
+from .politics import PoliticalTimeline
 from .schema import STORED_FIELDS, null_sentinel
 
 PERSON_COLUMNS = "id INTEGER PRIMARY KEY," + ",".join(
@@ -32,14 +35,21 @@ CREATE TABLE migrations(id INTEGER PRIMARY KEY, person INTEGER NOT NULL, year IN
 CREATE TABLE census(year INTEGER PRIMARY KEY, population INTEGER, births INTEGER, deaths INTEGER,
  marriages INTEGER, divorces INTEGER, migrations INTEGER, infant_deaths INTEGER,
  age_0_14 INTEGER, age_15_49 INTEGER, age_50_plus INTEGER, fertile_women INTEGER,
- partnered_fertile_women INTEGER, local_marriages INTEGER);
+ partnered_fertile_women INTEGER, local_marriages INTEGER, span INTEGER DEFAULT 1);
 CREATE TABLE settlement_census(year INTEGER, settlement INTEGER, population INTEGER,
  PRIMARY KEY(year, settlement)) WITHOUT ROWID;
+CREATE TABLE population_census(year INTEGER, kind TEXT, category INTEGER, population INTEGER,
+ PRIMARY KEY(year,kind,category)) WITHOUT ROWID;
+CREATE TABLE settlement_race_census(year INTEGER, settlement INTEGER, race INTEGER,
+ population INTEGER, PRIMARY KEY(year,settlement,race)) WITHOUT ROWID;
+CREATE TABLE migration_flows(year INTEGER, origin INTEGER, destination INTEGER, reason TEXT,
+ population INTEGER, PRIMARY KEY(year,origin,destination,reason)) WITHOUT ROWID;
 """
 
 
 class Store:
     def __init__(self, path: Path, config, settlements, activities):
+        self.pending_flows = Counter()
         self.connection = sqlite3.connect(path)
         self.connection.executescript(SCHEMA)
         self.connection.execute("PRAGMA journal_mode=DELETE")
@@ -76,16 +86,41 @@ class Store:
         self.connection.executemany(
             "INSERT INTO migrations(person,year,origin,destination,reason) VALUES (?,?,?,?,?)", rows
         )
+        self.pending_flows.update(
+            (origin, destination, reason) for _, _, origin, destination, reason in rows
+        )
 
-    def census(self, row, places):
-        self.connection.execute("INSERT INTO census VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
+    def distributions(self, year, groups, racial_places):
+        self.connection.executemany(
+            "INSERT INTO population_census VALUES (?,?,?,?)",
+            (
+                (year, kind, category, int(count))
+                for kind, values in groups.items()
+                for category, count in enumerate(values)
+                if count
+            ),
+        )
+        self.connection.executemany(
+            "INSERT INTO settlement_race_census VALUES (?,?,?,?)", racial_places
+        )
+
+    def census(self, row, places, span=1):
+        self.connection.execute(
+            "INSERT INTO census VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (*row, span)
+        )
+        self.connection.executemany(
+            "INSERT INTO migration_flows VALUES (?,?,?,?,?)",
+            ((row[0], *key, count) for key, count in self.pending_flows.items()),
+        )
+        self.pending_flows.clear()
         self.connection.executemany("INSERT INTO settlement_census VALUES (?,?,?)", places)
         self.connection.commit()
 
-    def finish(self, data, summary):
+    def finish(self, data, summary, count=None):
         # Chunk conversion limits temporary Python objects; dense array index is the ID.
-        for start in range(0, len(data), 10000):
-            end = min(start + 10000, len(data))
+        count = len(data) if count is None else count
+        for start in range(0, count, 10000):
+            end = min(start + 10000, count)
             columns = []
             for field, _, nullable in STORED_FIELDS:
                 column = data[field][start:end].tolist()
@@ -141,6 +176,20 @@ class Archive:
             self.start_year = json.loads(
                 db.execute("SELECT value FROM metadata WHERE key='config'").fetchone()[0]
             )["start_year"]
+            source = json.loads(
+                db.execute("SELECT value FROM metadata WHERE key='config'").fetchone()[0]
+            )
+            self.config = Scenario.model_validate(source)
+            places = [
+                Settlement(**{k: row[k] for k in ("id", "name", "x", "y", "kind", "capacity")})
+                for row in db.execute("SELECT * FROM settlements ORDER BY id")
+            ]
+            self.politics = PoliticalTimeline(self.config, places)
+            self.saved_years = {r[0] for r in db.execute("SELECT year FROM census")}
+            self.has_distributions = (
+                db.execute("SELECT 1 FROM sqlite_master WHERE name='population_census'").fetchone()
+                is not None
+            )
 
     def connect(self):
         db = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
@@ -260,11 +309,51 @@ class Archive:
                 )
             ]
 
-    def map_at(self, year: int):
+    def map_at(self, year: int, race: int | None = None):
+        if year not in self.saved_years:
+            raise ValueError("No stored census at this year; choose an available snapshot")
         with closing(self.connect()) as db:
-            return [
-                dict(r)
-                for r in db.execute(
-                    "SELECT settlement,population FROM settlement_census WHERE year=?", (year,)
+            if race is not None:
+                if not self.has_distributions:
+                    raise ValueError("Race maps require a newly generated archive")
+                rows = [
+                    dict(row)
+                    for row in db.execute(
+                        "SELECT s.id settlement,coalesce(c.population,0) population FROM settlements s "
+                        "LEFT JOIN settlement_race_census c ON c.settlement=s.id AND c.year=? "
+                        "AND c.race=?",
+                        (year, race),
+                    )
+                ]
+            else:
+                rows = [
+                    dict(r)
+                    for r in db.execute(
+                        "SELECT settlement,population FROM settlement_census WHERE year=?", (year,)
+                    )
+                ]
+        owners, _, _ = self.politics.at(year)
+        for row in rows:
+            row["nation"] = int(owners[self.politics.slots[row["settlement"]]])
+        return rows
+
+    def distributions(self, year):
+        if year not in self.saved_years:
+            raise ValueError("No stored census at this year")
+        if not self.has_distributions:
+            return {"available": False, "groups": {}, "flows": []}
+        with closing(self.connect()) as db:
+            groups = {}
+            for row in db.execute(
+                "SELECT kind,category,population FROM population_census WHERE year=?", (year,)
+            ):
+                groups.setdefault(row["kind"], []).append(dict(row))
+            flows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT origin,destination,sum(population) population FROM migration_flows "
+                    "WHERE year=? GROUP BY origin,destination ORDER BY population DESC LIMIT 150",
+                    (year,),
                 )
             ]
+        return {"available": True, "groups": groups, "flows": flows}

@@ -10,6 +10,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import yaml
 
+from .config import virtual_map
+from .politics import PoliticalTimeline
 from .store import Archive
 from .studio import BusyError, Studio
 
@@ -49,8 +51,29 @@ def make_handler(archive: Archive, studio: Studio | None = None):
                 route = urlsplit(self.path).path
                 if route == "/api/generate":
                     self.reply(studio.start(payload), 202)
+                elif route == "/api/cancel":
+                    self.reply(studio.cancel())
                 elif route == "/api/validate":
                     self.reply({"scenario": studio.validate(payload).model_dump(mode="json")})
+                elif route == "/api/preview":
+                    scenario = studio.validate(payload)
+                    places = virtual_map(scenario)
+                    year = int(payload.get("year", scenario.start_year))
+                    if not scenario.start_year <= year <= scenario.start_year + scenario.duration:
+                        raise ValueError("Preview year outside simulation dates")
+                    owners, _, _ = PoliticalTimeline(scenario, places).at(year)
+                    self.reply(
+                        {
+                            "settlements": [
+                                {**p.model_dump(mode="json"), "nation": int(owners[i])}
+                                for i, p in enumerate(places)
+                            ],
+                            "nations": [n.name for n in scenario.nations],
+                            "year": year,
+                            "population": scenario.initial_population,
+                            "seed": scenario.seed,
+                        }
+                    )
                 elif route == "/api/select":
                     self.reply(studio.select(payload["id"]))
                 else:
@@ -69,13 +92,17 @@ def make_handler(archive: Archive, studio: Studio | None = None):
 
             try:
                 archive_id, archive = studio.snapshot(query.get("archive", [None])[0])
-                if path.path in ("/", "/studio.css", "/studio.js"):
+                if path.path in ("/", "/studio.css", "/studio.js", "/d3-delaunay.min.js"):
                     asset, mime = {
                         "/": ("explorer.html", "text/html; charset=utf-8"),
                         "/studio.css": ("studio.css", "text/css; charset=utf-8"),
                         "/studio.js": ("studio.js", "application/javascript; charset=utf-8"),
+                        "/d3-delaunay.min.js": (
+                            "vendor/d3-delaunay.min.js",
+                            "application/javascript; charset=utf-8",
+                        ),
                     }[path.path]
-                    body = Path(__file__).with_name(asset).read_bytes()
+                    body = (Path(__file__).parent / asset).read_bytes()
                 else:
                     if path.path == "/api/presets":
                         value = studio.presets()
@@ -106,7 +133,11 @@ def make_handler(archive: Archive, studio: Studio | None = None):
                             integer("place"), integer("limit", 100), integer("after", -1)
                         )
                     elif path.path == "/api/map":
-                        value = archive.map_at(integer("year"))
+                        value = archive.map_at(
+                            integer("year"), integer("race") if "race" in query else None
+                        )
+                    elif path.path == "/api/distributions":
+                        value = archive.distributions(integer("year"))
                     elif path.path == "/api/residence":
                         value = archive.residence(integer("id"), integer("year"))
                     else:

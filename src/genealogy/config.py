@@ -226,9 +226,58 @@ class Event(Settings):
         return self
 
 
+class Nation(Settings):
+    """Political identity with a lifetime; ancestry is independent of sovereignty."""
+
+    name: str = Field(min_length=1)
+    founded: int
+    dissolved: int | None = None
+    capital: int | None = Field(default=None, ge=0)
+    metadata: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def lifetime(self):
+        if self.dissolved is not None and self.dissolved <= self.founded:
+            raise ValueError("Nation dissolution must follow foundation")
+        return self
+
+
+class Territory(Settings):
+    nation: str
+    settlements: list[int] = Field(min_length=1)
+    start_year: int
+    end_year: int | None = None
+
+    @model_validator(mode="after")
+    def interval(self):
+        if self.end_year is not None and self.end_year <= self.start_year:
+            raise ValueError("Territory intervals are half-open and must have positive duration")
+        if len(set(self.settlements)) != len(self.settlements):
+            raise ValueError("Repeated territory settlement")
+        return self
+
+
+class NationContact(Settings):
+    nations: tuple[str, str]
+    start_year: int
+    end_year: int | None = None
+    marriage_factor: Nonnegative = 1
+    migration_factor: Nonnegative = 1
+    metadata: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def interval(self):
+        if self.nations[0] == self.nations[1]:
+            raise ValueError("Contacts connect two different nations")
+        if self.end_year is not None and self.end_year <= self.start_year:
+            raise ValueError("Reversed contact dates")
+        return self
+
+
 class Scenario(Settings):
     schema_version: Literal[1] = 1
     seed: int = Field(default=42, ge=0)
+    backend: Literal["compiled", "reference"] = "compiled"
     start_year: int = Field(default=1000, ge=-100000, le=100000)
     generations: int = Field(default=5, ge=1, le=100)
     generation_years: int = Field(default=25, ge=1, le=100)
@@ -236,9 +285,12 @@ class Scenario(Settings):
     initial_population: int = Field(default=2000, ge=2, le=100_000_000)
     target_population: int | None = Field(default=None, ge=2, le=100_000_000)
     calibration_population: int = Field(default=2000, ge=100, le=100000)
+    target_mode: Literal["calibrate_founders", "report"] = "calibrate_founders"
     target_tolerance: Probability = 0.1
+    snapshot_interval: int = Field(default=10, ge=1, le=10000)
     virtual_settlements: int = Field(default=16, ge=1, le=10000)
     virtual_spacing: Positive = 20
+    spatial_layout: Literal["dispersed", "clustered", "grid"] = "dispersed"
     settlement_types: list[SettlementType] = Field(default_factory=default_settlement_types)
     capacity_mode: Literal["scale", "fixed"] = "scale"
     demography: Demography = Field(default_factory=Demography)
@@ -248,6 +300,12 @@ class Scenario(Settings):
     settlements: list[Settlement] = Field(default_factory=list)
     races: list[Race] = Field(default_factory=lambda: [Race(name="human")])
     crossbreeding: list[Crossbreeding] = Field(default_factory=list)
+    nations: list[Nation] = Field(default_factory=list)
+    territory_mode: Literal["nearest_capital", "explicit"] = "nearest_capital"
+    territories: list[Territory] = Field(default_factory=list)
+    nation_contacts: list[NationContact] = Field(default_factory=list)
+    foreign_marriage_factor: Nonnegative = 0
+    foreign_migration_factor: Nonnegative = 0
     metadata: dict = Field(default_factory=dict)
 
     @property
@@ -269,6 +327,38 @@ class Scenario(Settings):
         if len(ids) != len(set(ids)):
             raise ValueError("Settlement IDs must be unique")
         valid = set(ids) if ids else set(range(self.virtual_settlements))
+        nation_names = {n.name for n in self.nations}
+        if len(nation_names) != len(self.nations):
+            raise ValueError("Nation names must be unique")
+        nation_lookup = {n.name: n for n in self.nations}
+        claims = {}
+        for nation in self.nations:
+            if nation.capital is not None and nation.capital not in valid:
+                raise ValueError("Unknown nation capital")
+        for territory in self.territories:
+            if territory.nation not in nation_names or not set(territory.settlements) <= valid:
+                raise ValueError("Unknown nation or settlement in territory")
+            nation = nation_lookup[territory.nation]
+            end = territory.end_year if territory.end_year is not None else 2**63
+            if territory.start_year < nation.founded or (
+                nation.dissolved is not None and end > nation.dissolved
+            ):
+                raise ValueError("Territory must lie within its nation's lifetime")
+            for pid in territory.settlements:
+                for start, stop in claims.get(pid, []):
+                    if territory.start_year < stop and start < end:
+                        raise ValueError("Overlapping territorial sovereignty")
+                claims.setdefault(pid, []).append((territory.start_year, end))
+        contacts = {}
+        for contact in self.nation_contacts:
+            if not set(contact.nations) <= nation_names:
+                raise ValueError("Unknown nation in contact")
+            key = tuple(sorted(contact.nations))
+            end = contact.end_year if contact.end_year is not None else 2**63
+            for start, stop in contacts.get(key, []):
+                if contact.start_year < stop and start < end:
+                    raise ValueError("Overlapping nation contacts")
+            contacts.setdefault(key, []).append((contact.start_year, end))
         for event in self.events:
             if not set(event.settlements) <= valid:
                 raise ValueError(f"Unknown settlements in event {event.name}")
@@ -316,6 +406,13 @@ class Scenario(Settings):
         for place in self.settlements or self.settlement_types:
             if not set(place.races) <= set(names) or place.races and sum(place.races.values()) <= 0:
                 raise ValueError("Invalid settlement race weights")
+        societies = [self.society]
+        current_society = self.society
+        for period in sorted(self.periods, key=lambda p: p.start_year):
+            current_society = Society.model_validate(
+                {**current_society.model_dump(), **period.society.model_dump(exclude_none=True)}
+            )
+            societies.append(current_society)
         demographic_bases = [self.demography]
         base = self.demography
         for period in sorted(self.periods, key=lambda p: p.start_year):
@@ -328,10 +425,11 @@ class Scenario(Settings):
                 Demography.model_validate(
                     {**base.model_dump(), **race.demography.model_dump(exclude_none=True)}
                 )
-            low = race.marriage_min_age or self.society.marriage_min_age
-            high = race.marriage_max_age or self.society.marriage_max_age
-            if low > high:
-                raise ValueError(f"Reversed marriage ages for {race.name}")
+            for society in societies:
+                low = race.marriage_min_age or society.marriage_min_age
+                high = race.marriage_max_age or society.marriage_max_age
+                if low > high:
+                    raise ValueError(f"Reversed marriage ages for {race.name} in a period")
         return self
 
 
@@ -340,7 +438,7 @@ def load_scenario(path: Path) -> Scenario:
 
 
 def virtual_map(config: Scenario) -> list[Settlement]:
-    """Seeded grid with exact size, guaranteed minima and proportional place quotas."""
+    """Seeded spatial distribution with exact size and proportional place quotas."""
     if config.settlements:
         if config.capacity_mode == "fixed":
             return config.settlements
@@ -360,8 +458,25 @@ def virtual_map(config: Scenario) -> list[Settlement]:
         counts[i] += 1
     profiles = [t for t, count in zip(types, counts) for _ in range(count)]
     random.Random(config.seed).shuffle(profiles)
+    rng = random.Random(config.seed ^ 0x51A71A1)
+    extent = max(1, width - 1) * config.virtual_spacing
+    centers = [
+        (rng.uniform(0, extent), rng.uniform(0, extent))
+        for _ in range(max(2, round(math.sqrt(config.virtual_settlements) / 2)))
+    ]
     result = []
     for i, profile in enumerate(profiles):
+        if config.spatial_layout == "grid":
+            x, y = (i % width) * config.virtual_spacing, (i // width) * config.virtual_spacing
+        elif config.spatial_layout == "clustered":
+            cx, cy = rng.choice(centers)
+            x = min(extent, max(0, rng.gauss(cx, extent / 9)))
+            y = min(extent, max(0, rng.gauss(cy, extent / 9)))
+            # Tiny jitter keeps clamped boundary sites distinct for Voronoi geometry.
+            x += rng.random() * extent * 1e-6
+            y += rng.random() * extent * 1e-6
+        else:
+            x, y = rng.uniform(0, extent), rng.uniform(0, extent)
         result.append(
             Settlement(
                 id=i,
@@ -369,8 +484,8 @@ def virtual_map(config: Scenario) -> list[Settlement]:
                 kind=profile.kind,
                 capacity=profile.capacity,
                 initial_weight=profile.capacity * profile.initial_weight,
-                x=(i % width) * config.virtual_spacing,
-                y=(i // width) * config.virtual_spacing,
+                x=x,
+                y=y,
                 activities=profile.activities,
                 races=profile.races,
                 metadata=deepcopy(profile.metadata),
