@@ -64,3 +64,19 @@ les LoRA et le dépannage.
 Les tests utilisent des réponses simulées et ne nécessitent ni clé ni serveur GPU.
 Voir [la revue de génération](docs/revue_generation.md) pour les problèmes de
 cohérence identifiés et les améliorations proposées.
+
+## Population et généalogie spatialisées
+
+Un prototype autonome simule les naissances, décès, unions, divorces et migrations
+sur plusieurs générations, avec carte virtuelle, stockage SQLite compact et
+explorateur local des filiations. Aucun LLM ni clé API n'est nécessaire.
+Les peuples fantasy ont leurs propres cycles de vie et des croisements configurables.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.genealogy.cli generate config/genealogy/fantasy.yaml --output output/genealogy/fantasy.sqlite
+.\.venv\Scripts\python.exe -m src.genealogy.cli explore output/genealogy/fantasy.sqlite
+```
+
+Ouvrir `http://127.0.0.1:8765`. Voir [le guide de généalogie](docs/genealogy.md)
+pour les règles, les cartes fournies, la population cible et les limites d'échelle,
+ainsi que [la revue Sol/Opus](docs/genealogy_review.md).

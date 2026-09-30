@@ -1,0 +1,100 @@
+# Fictional biology: these are worldbuilding choices, not D&D rules.
+schema_version: 1
+seed: 123
+start_year: 1000
+generations: 8
+generation_years: 25
+initial_population: 4000
+virtual_settlements: 16
+society:
+  divorce_rate: 0.001
+  migration_rate: 0.012
+  kinship_depth: 3
+races:
+  - name: human
+    initial_weight: 75
+  - name: elf
+    initial_weight: 12
+    marriage_min_age: 60
+    marriage_max_age: 350
+    dependent_age: 40
+    max_age_gap: 100
+    demography:
+      max_age: 600
+      infant_mortality: 0.06
+      child_mortality: 0.001
+      child_max_age: 40
+      adult_mortality: 0.0008
+      aging_coefficient: 0.000001
+      aging_exponent: 0.018
+      fertility_min_age: 60
+      fertility_max_age: 300
+      fertility_peak_age: 150
+      fertility_width: 75
+      fertility_peak: 0.035
+      birth_spacing: 12
+      maternal_mortality: 0.002
+  - name: dwarf
+    initial_weight: 13
+    marriage_min_age: 35
+    marriage_max_age: 140
+    dependent_age: 30
+    max_age_gap: 40
+    demography:
+      max_age: 250
+      infant_mortality: 0.10
+      child_mortality: 0.004
+      child_max_age: 30
+      adult_mortality: 0.002
+      aging_coefficient: 0.00001
+      aging_exponent: 0.035
+      fertility_min_age: 35
+      fertility_max_age: 120
+      fertility_peak_age: 65
+      fertility_width: 30
+      fertility_peak: 0.10
+      birth_spacing: 4
+  - name: half_elf
+    initial_weight: 0
+    marriage_min_age: 25
+    marriage_max_age: 90
+    dependent_age: 20
+    max_age_gap: 40
+    demography:
+      max_age: 180
+      child_mortality: 0.012
+      child_max_age: 20
+      adult_mortality: 0.003
+      aging_coefficient: 0.00002
+      aging_exponent: 0.050
+      fertility_min_age: 25
+      fertility_max_age: 80
+      fertility_peak_age: 40
+      fertility_width: 18
+      fertility_peak: 0.18
+      birth_spacing: 3
+crossbreeding:
+  - parents: [human, elf]
+    marriage_affinity: 0.025
+    max_age_gap: 180
+    fertility_factor: 0.6
+    offspring: {half_elf: 1}
+  - parents: [human, half_elf]
+    marriage_affinity: 0.25
+    fertility_factor: 0.8
+    offspring: {human: 0.6, half_elf: 0.4}
+  - parents: [elf, half_elf]
+    marriage_affinity: 0.15
+    fertility_factor: 0.8
+    offspring: {elf: 0.6, half_elf: 0.4}
+# Unlisted mixed pairs cannot form a reproductive union in this prototype.
+# Same-race unions inherit that race; dwarf/human therefore stays disabled.
+events:
+  - name: War in the human frontier
+    start_year: 1100
+    end_year: 1104
+    settlements: [0, 1, 4, 5]
+    races: [human, half_elf]
+    extra_mortality: 0.02
+    fertility_factor: 0.7
+    migration_factor: 2

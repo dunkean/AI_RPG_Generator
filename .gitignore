@@ -178,4 +178,6 @@ map.jpg
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.sqlite-journal
+*.sqlite.partial
 *.npz

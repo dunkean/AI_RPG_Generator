@@ -1,0 +1,51 @@
+# Fictional preindustrial preset; rates are tunable, not historically fitted.
+schema_version: 1
+seed: 42
+start_year: 1000
+generations: 6
+generation_years: 25
+initial_population: 3000
+virtual_settlements: 25
+virtual_spacing: 20
+demography:
+  infant_mortality: 0.22
+  child_mortality: 0.025
+  adult_mortality: 0.009
+  aging_coefficient: 0.00010
+  aging_exponent: 0.095
+  fertility_peak: 0.36
+  fertility_peak_age: 27
+  fertility_width: 10
+  birth_spacing: 2
+  maternal_mortality: 0.008
+society:
+  marriage_min_age: 18
+  divorce_rate: 0
+  kinship_depth: 3
+  residence: either
+  migration_rate: 0.01
+  marriage_radius: 60
+  migration_radius: 100
+  status_weights: [0.76, 0.19, 0.045, 0.005]
+events:
+  - name: Regional war
+    start_year: 1060
+    end_year: 1064
+    settlements: [0, 1, 2, 5, 6]
+    extra_mortality: 0.025
+    fertility_factor: 0.65
+    migration_factor: 3
+    capacity_factor: 0.7
+  - name: Great epidemic
+    start_year: 1100
+    end_year: 1100
+    extra_mortality: 0.20
+    fertility_factor: 0.5
+    migration_factor: 1.5
+periods:
+  - start_year: 1120
+    demography:
+      infant_mortality: 0.19
+      adult_mortality: 0.008
+metadata:
+  description: Virtual medieval region, unknown founder ancestry before 1000
