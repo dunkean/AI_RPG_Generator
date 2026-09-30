@@ -165,7 +165,7 @@ def make_handler(archive: Archive, studio: Studio | None = None):
 
 
 def serve(path: Path, port=8765):
-    archive = Archive(path)
+    archive = Archive(path) if isinstance(path, Path) else path
     with ThreadingHTTPServer(("127.0.0.1", port), make_handler(archive)) as server:
         print(f"Explorer: http://127.0.0.1:{server.server_port} (Ctrl+C to stop)", flush=True)
         try:

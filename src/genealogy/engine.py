@@ -18,6 +18,7 @@ from zlib import crc32
 import numpy as np
 
 from .config import Demography, Scenario, Society, virtual_map
+from .events import EventBuffer
 from .politics import PoliticalTimeline
 from .schema import DTYPE, NO_YEAR, PersonColumns
 from .store import Store
@@ -93,6 +94,24 @@ class Engine:
                 weights / weights.sum(),
             )
             self.activity_sets[place.id] = set(map(int, self.activity_options[place.id][0]))
+        self.activity_allowed = np.zeros((len(self.settlements), len(self.activities)), bool)
+        self.activity_cdf = {}
+        for slot, place in enumerate(self.settlements):
+            options, weights = self.activity_options[place.id]
+            self.activity_allowed[slot, options] = True
+            cumulative = np.cumsum(weights)
+            cumulative /= cumulative[-1]
+            self.activity_cdf[place.id] = cumulative
+        lengths = [len(self.activity_options[p.id][0]) for p in self.settlements]
+        self.activity_offsets = np.r_[0, np.cumsum(lengths)].astype(np.int32)
+        self.activity_choices = np.concatenate(
+            [self.activity_options[p.id][0] for p in self.settlements]
+        )
+        self.activity_cumulative = np.concatenate(
+            [self.activity_cdf[p.id] for p in self.settlements]
+        )
+        self.place_ranks = np.empty(len(self.settlements), np.int32)
+        self.place_ranks[self.sorted_slots] = np.arange(len(self.settlements))
         self.neighbors = self._neighbors()
         self.politics = PoliticalTimeline(config, self.settlements)
         self.data = PersonColumns(max(4096, config.initial_population * 2))
@@ -102,7 +121,11 @@ class Engine:
         self.demography = config.demography
         self._apply_periods()
         self.rows = []
-        self.moves, self.new_unions, self.closed_unions = [], [], []
+        self.moves, self.new_unions, self.closed_unions = (
+            EventBuffer(),
+            EventBuffer(),
+            EventBuffer(reason_index=1),
+        )
         self.kin_checks = self.kin_rejections = 0
         self.timings = defaultdict(float)
         started = time.perf_counter()
@@ -207,18 +230,19 @@ class Engine:
     def _activity(self, ids, places, inherited=None):
         if not len(ids):
             return
-        order = np.argsort(places, kind="stable")
-        sorted_places = places[order]
-        boundaries = np.concatenate(([0], np.flatnonzero(np.diff(sorted_places)) + 1, [len(ids)]))
-        compatible = np.zeros(len(ids), bool)
-        for start, end in pairwise(boundaries):
-            positions = order[start:end]
-            selection = ids[positions]
-            options, weights = self.activity_options[int(sorted_places[start])]
-            self.data["activity"][selection] = self.rng.choice(options, len(selection), p=weights)
-            if inherited is not None:
-                compatible[positions] = np.isin(inherited[positions], options)
+        from .kernels import choose_activities, stable_groups
+
+        slots = self.data["place_slot"][ids]
+        order, _, _, _ = stable_groups(self.place_ranks[slots], len(self.settlements))
+        self.data["activity"][ids[order]] = choose_activities(
+            slots[order],
+            self.rng.random(len(ids)),
+            self.activity_offsets,
+            self.activity_choices,
+            self.activity_cumulative,
+        )
         if inherited is not None:
+            compatible = self.activity_allowed[slots, inherited]
             keep = self.rng.random(len(ids)) < self.society.activity_inheritance
             self.data["activity"][ids[keep & compatible]] = inherited[keep & compatible]
 
@@ -323,6 +347,23 @@ class Engine:
     def _dependents(self):
         """Vectorized maternal custody, then co-resident father; orphans stay put."""
         d, ids = self.data, self.alive
+        if self.config.backend == "compiled":
+            from .kernels import guardian_pairs
+
+            children, guardians = guardian_pairs(
+                ids,
+                d["birth"],
+                d["race"],
+                d["partner"],
+                d["mother"],
+                d["father"],
+                d["death"],
+                d["place"],
+                self.race_dependent_age,
+                self.year,
+                NO_YEAR,
+            )
+            return DependentIndex(children, guardians)
         age = self.year - d["birth"][ids]
         children = ids[(age < self.race_dependent_age[d["race"][ids]]) & (d["partner"][ids] < 0)]
         guardians = np.full(len(children), -1, dtype=np.int32)
@@ -413,26 +454,29 @@ class Engine:
         if not len(ids):
             return
         destinations = self.place_ids[slots]
-        self.moves.extend(
-            zip(
-                ids.tolist(),
-                [self.year] * len(ids),
-                d["place"][ids].tolist(),
-                destinations.tolist(),
-                [reason] * len(ids),
-                strict=True,
-            )
+        self.moves.batch(
+            np.column_stack((ids, np.full(len(ids), self.year), d["place"][ids], destinations)),
+            reason,
         )
         d["place"][ids], d["place_slot"][ids] = destinations, slots
-        # Retain compatible occupations, draw replacements in settlement-sized batches.
-        order = np.argsort(slots, kind="stable")
-        grouped = slots[order]
-        bounds = np.r_[0, np.flatnonzero(np.diff(grouped)) + 1, len(ids)]
-        for start, end in pairwise(bounds):
-            selection = ids[order[start:end]]
-            options, weights = self.activity_options[int(self.place_ids[grouped[start]])]
-            unsupported = selection[~np.isin(d["activity"][selection], options)]
-            d["activity"][unsupported] = self.rng.choice(options, len(unsupported), p=weights)
+        # Draw only replacements, preserving the original stable slot/group draw order.
+        unsupported = ids[~self.activity_allowed[slots, d["activity"][ids]]]
+        if not len(unsupported):
+            return
+        slots = d["place_slot"][unsupported]
+        from .kernels import stable_groups
+
+        order, _, _, _ = stable_groups(slots, len(self.settlements))
+        from .kernels import choose_activities
+
+        selection = unsupported[order]
+        d["activity"][selection] = choose_activities(
+            slots[order],
+            self.rng.random(len(unsupported)),
+            self.activity_offsets,
+            self.activity_choices,
+            self.activity_cumulative,
+        )
 
     def _move_households_batch(self, adults, slots, reason):
         if not len(adults):
@@ -470,8 +514,14 @@ class Engine:
         self.rng.shuffle(women)
         race_count = len(self.config.races)
         codes = d["place_slot"][men].astype(np.int64) * race_count + d["race"][men]
-        order = np.argsort(codes, kind="stable")
-        keys, offsets, sizes = np.unique(codes[order], return_index=True, return_counts=True)
+        groups = len(self.settlements) * race_count
+        if groups <= 2_000_000:
+            from .kernels import stable_groups
+
+            order, keys, offsets, sizes = stable_groups(codes, groups)
+        else:
+            order = np.argsort(codes, kind="stable")
+            keys, offsets, sizes = np.unique(codes[order], return_index=True, return_counts=True)
         if not hasattr(self, "kin_marks"):
             self.kin_marks = np.zeros(len(self.data), np.int32)
             self.kin_stamp = 0
@@ -519,7 +569,7 @@ class Engine:
         records = np.column_stack(
             (unions, pairs[:, :2], np.full(count, self.year), self.place_ids[pairs[:, 2]])
         )
-        self.new_unions.extend(map(tuple, records.tolist()))
+        self.new_unions.batch(records)
         self.next_union += count
         self._move_households_batch(pairs[:, :2].ravel(), np.repeat(pairs[:, 2], 2), "marriage")
         return count, int(local)
@@ -615,7 +665,9 @@ class Engine:
         union_ids, positions = np.unique(d["union"][active], return_index=True)
         participants = active[positions]
         pair = np.r_[participants, d["partner"][participants]]
-        self.closed_unions.extend((self.year, reason, int(union)) for union in union_ids)
+        self.closed_unions.batch(
+            np.column_stack((np.full(len(union_ids), self.year), union_ids)), reason
+        )
         d["partner"][pair] = d["union"][pair] = -1
         d["eligible_year"][pair] = self.year + self.society.remarriage_delay
         return len(union_ids)
@@ -623,6 +675,13 @@ class Engine:
     def _events(self, ids, process="diagnostic"):
         """Composable yearly hazards; local effects and age/sex targeting."""
         size = len(ids)
+        if not self.rules and not any(
+            e.start_year <= self.year <= e.end_year for e in self.config.events
+        ):
+            one = np.broadcast_to(np.array(1.0), (size,))
+            zero = np.broadcast_to(np.array(0.0), (size,))
+            fertility = np.ones(size) if self.crossbreeding and process == "births" else one
+            return one, zero, fertility, one, np.ones(len(self.settlements))
         mortality, extra, fertility, migration = (
             np.ones(size),
             np.zeros(size),
@@ -676,15 +735,31 @@ class Engine:
     def _births(self):
         d = self.data
         ids = self.alive
-        ages = self.year - d["birth"][ids]
-        races = d["race"][ids]
-        fertile = ids[
-            (d["sex"][ids] == 1)
-            & (d["partner"][ids] >= 0)
-            & (ages >= self.race_fertility_min[races])
-            & (ages <= self.race_fertility_max[races])
-            & (self.year - d["last_birth"][ids] >= self.race_birth_spacing[races])
-        ]
+        if self.config.backend == "compiled":
+            from .kernels import fertile_ids
+
+            fertile = fertile_ids(
+                ids,
+                d["birth"],
+                d["sex"],
+                d["race"],
+                d["partner"],
+                d["last_birth"],
+                self.race_fertility_min,
+                self.race_fertility_max,
+                self.race_birth_spacing,
+                self.year,
+            )
+        else:
+            ages = self.year - d["birth"][ids]
+            races = d["race"][ids]
+            fertile = ids[
+                (d["sex"][ids] == 1)
+                & (d["partner"][ids] >= 0)
+                & (ages >= self.race_fertility_min[races])
+                & (ages <= self.race_fertility_max[races])
+                & (self.year - d["last_birth"][ids] >= self.race_birth_spacing[races])
+            ]
         ages = self.year - d["birth"][fertile]
         _, _, factor, _, capacity_factor = self._events(fertile, "births")
         counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
@@ -768,14 +843,11 @@ class Engine:
 
         self._native_graph()
         d, s, ids = self.data, self.society, self.alive
-        partner = d["partner"][ids]
-        heads = ids[
-            (
-                (partner < 0)
-                & (self.year - d["birth"][ids] >= self.race_dependent_age[d["race"][ids]])
-            )
-            | ((partner >= 0) & (ids < partner))
-        ]
+        from .kernels import household_heads
+
+        heads = household_heads(
+            ids, d["partner"], d["birth"], d["race"], self.race_dependent_age, self.year
+        )
         paired = d["partner"][heads] >= 0
         participants = np.r_[heads, d["partner"][heads[paired]]]
         _, _, _, factors, capacity_factor = self._events(participants, "migrations")
@@ -858,17 +930,49 @@ class Engine:
             self.store.unions(self.new_unions)
             self.store.close_unions(self.closed_unions)
             self.store.migrations(self.moves)
-        self.new_unions, self.closed_unions, self.moves = [], [], []
+        self.new_unions, self.closed_unions, self.moves = (
+            EventBuffer(),
+            EventBuffer(reason_index=1),
+            EventBuffer(),
+        )
 
     def _census(self, births, deaths, marriages, divorces, migrations, infants, local):
         d, ids = self.data, self.alive
-        ages = self.year - d["birth"][ids]
-        races = d["race"][ids]
-        fertile = (
-            (d["sex"][ids] == 1)
-            & (ages >= self.race_fertility_min[races])
-            & (ages <= self.race_fertility_max[races])
-        )
+        if self.config.backend == "compiled":
+            from numba import config as numba_config
+            from numba import set_num_threads
+
+            from .kernels import census_counts, census_counts_parallel
+
+            counter = census_counts
+            if len(ids) >= 250_000 and self.config.compute_threads > 1:
+                set_num_threads(min(self.config.compute_threads, numba_config.NUMBA_NUM_THREADS))
+                counter = census_counts_parallel
+            metrics = counter(
+                ids,
+                d["birth"],
+                d["sex"],
+                d["race"],
+                d["partner"],
+                self.race_fertility_min,
+                self.race_fertility_max,
+                self.year,
+            )
+        else:
+            ages = self.year - d["birth"][ids]
+            races = d["race"][ids]
+            fertile = (
+                (d["sex"][ids] == 1)
+                & (ages >= self.race_fertility_min[races])
+                & (ages <= self.race_fertility_max[races])
+            )
+            metrics = (
+                int(np.sum(ages < 15)),
+                int(np.sum((ages >= 15) & (ages < 50))),
+                int(np.sum(ages >= 50)),
+                int(np.sum(fertile)),
+                int(np.sum(fertile & (d["partner"][ids] >= 0))),
+            )
         row = (
             self.year,
             len(ids),
@@ -878,11 +982,7 @@ class Engine:
             divorces,
             migrations,
             infants,
-            int(np.sum(ages < 15)),
-            int(np.sum((ages >= 15) & (ages < 50))),
-            int(np.sum(ages >= 50)),
-            int(np.sum(fertile)),
-            int(np.sum(fertile & (d["partner"][ids] >= 0))),
+            *metrics,
             local,
         )
         self.rows.append(row)
@@ -891,6 +991,8 @@ class Engine:
             or self.year == self.config.start_year + self.config.duration
         )
         if self.store and due:
+            ages = self.year - d["birth"][ids]
+            races = d["race"][ids]
             counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
             owners, _, _ = self.politics.at(self.year)
             groups = {
@@ -1096,13 +1198,17 @@ class Engine:
 
 def generate(
     config: Scenario,
-    path: Path,
+    path: Path | None,
     progress=None,
     rules=(),
     calibration_progress=None,
     calibration_stage=None,
 ):
-    """Publish only a complete archive; never overwrite an existing generation."""
+    """Run exact histories in RAM (path=None), or publish an explicit SQLite archive.
+
+    The memory result implements the explorer interface. A disk path returns a
+    summary and is never overwritten. Both modes run the same simulation rules.
+    """
     rules = tuple(rules)
     descriptors = [
         getattr(
@@ -1116,13 +1222,14 @@ def generate(
         for rule in rules
     ]
     json.dumps(descriptors)  # reject unserializable provenance before an expensive run
-    path = path.resolve()
-    if path.exists():
-        raise FileExistsError(f"Choose a new output path: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staging = path.with_suffix(path.suffix + ".partial")
-    if staging.exists():
-        raise FileExistsError(f"Previous incomplete run exists: {staging}")
+    if path is not None:
+        path = path.resolve()
+        if path.exists():
+            raise FileExistsError(f"Choose a new output path: {path}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staging = path.with_suffix(path.suffix + ".partial")
+        if staging.exists():
+            raise FileExistsError(f"Previous incomplete run exists: {staging}")
     started = time.perf_counter()
     calibration = None
     if config.target_population and config.target_mode == "calibrate_founders":
@@ -1185,7 +1292,12 @@ def generate(
         del pilot_engine
     settlements = virtual_map(config)
     activities = sorted({a for p in settlements for a in p.activities})
-    store = Store(staging, config, settlements, activities)
+    if path is None:
+        from .memory import MemoryArchive
+
+        store = MemoryArchive(None, config, settlements, activities)
+    else:
+        store = Store(staging, config, settlements, activities)
     try:
         engine = Engine(config, store, rules=rules)
         summary = engine.run(progress)
@@ -1193,6 +1305,9 @@ def generate(
         summary["rules"] = descriptors
         summary["simulation_seconds"] = time.perf_counter() - started
         store.finish(engine.data, summary, engine.n)
+        if path is None:
+            summary["total_seconds"] = time.perf_counter() - started
+            return store
         summary["archive_bytes"] = staging.stat().st_size
         summary["total_seconds"] = time.perf_counter() - started
         store.update_summary(summary)

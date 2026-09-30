@@ -1647,7 +1647,9 @@ async function loadWorld() {
   await selectPerson(candidates[0]?.id ?? 0);
   if (epoch !== worldEpoch) return;
   $("diagnostics").textContent =
-    "Archive " +
+    (s.storage === "native-binary-memory-v1"
+      ? "Mémoire binaire · aucune écriture · "
+      : "Archive ") +
     (s.archive_bytes / 1024 / 1024).toFixed(2) +
     " Mio · " +
     fmt(s.migrations) +
@@ -1690,6 +1692,7 @@ safely(async () => {
   await catalogue();
   await loadWorld();
   populate(presets.current);
+  $("preset").value = "current";
   const status = await api("job");
   if (status.state !== "idle") await poll();
 })();

@@ -12,16 +12,18 @@ une histoire cohérente, mesurable et ajustable avant d'y greffer le monde.
 
 ## Lancer et explorer
 
-Sous Windows, double-cliquer sur `explore_genealogy.cmd` : il génère la démo
-un monde de référence d’un million de fondateurs / 500 lieux si nécessaire, puis sert l'explorateur sur http://127.0.0.1:8765.
-Garder sa fenêtre ouverte pendant la consultation. On peut aussi lui passer
-le chemin d'une archive existante. L'HTML dépend de ce serveur local.
-Le lanceur exige un environnement local : `python -m venv .venv`, puis
+Sous Windows, double-cliquer sur `explore_genealogy.cmd`, puis ouvrir
+http://127.0.0.1:8767. Le lanceur démarre une petite population de démonstration
+**en RAM**, sans produire de fichier ni d'archive SQLite. Garder sa fenêtre
+ouverte. Le scénario « civilisation » permet ensuite de configurer un calcul massif.
+Les mondes sont éphémères : le serveur garde le monde actif et deux alternatives
+récentes ; fermer le serveur libère les données. La graine et la configuration
+permettent de refaire le calcul.
+
+Le lanceur exige `.venv` : `python -m venv .venv`, puis
 `.venv\Scripts\python.exe -m pip install -e ".[dev]"`.
-Il réutilise l'archive existante : après modification du YAML, générer une nouvelle
-archive avec la commande `generate`, puis la passer au lanceur. Une génération
-interrompue peut laisser un fichier `.partial` ; choisir une autre sortie pour
-relancer, ou retirer ce fichier temporaire après avoir arrêté la génération.
+Un chemin d'archive SQLite passé au lanceur charge cette archive en lecture seule ;
+les nouveaux calculs du studio restent en mémoire. L'HTML utilise le serveur local.
 
 La page s'ouvre sur **Configurer & générer** : choisir un scénario médiéval,
 fantasy ou les paramètres par défaut, saisir une graine et ajuster la population,
@@ -35,10 +37,11 @@ verrouillés jusqu'à application ou annulation pour préserver les changements.
 **Générer ce monde** lance un calcul en arrière-plan. La page indique la
 calibration éventuelle, l'année courante, la population et la progression. Un
 seul calcul peut tourner par serveur. À la fin, le résultat s’ouvre automatiquement si cet onglet est resté sur la configuration. Si une exploration est en cours, **Explorer le résultat** permet de basculer explicitement.
-Les archives sont enregistrées dans `output/genealogy/web_runs/`, avec une sortie
-distincte à chaque fois. Le menu des mondes permet de revenir aux résultats,
-y compris après redémarrage (les 100 archives les plus récentes sont reprises).
-La graine et le scénario sont conservés dans chaque archive.
+Chaque nouveau calcul garde des tableaux binaires NumPy propriétaires en RAM,
+avec identifiants denses, événements datés et index d'exploration. Il ne passe pas
+par SQLite et ne sauvegarde pas automatiquement les données. La configuration
+et la graine sont conservées dans le monde. `generate --output ...` reste une
+commande de sauvegarde SQLite explicite pour compatibilité.
 
 L'import accepte YAML et JSON ; l'export télécharge un scénario JSON réutilisable.
 Les champs et configurations sont validés avant le calcul. La vue **Explorer**
@@ -65,7 +68,16 @@ Depuis la racine du dépôt, sous PowerShell :
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 
-# Exemple humain : six générations conventionnelles de 25 ans, avec crises.
+# Studio sans écriture de données ; petite démo immédiate.
+.\.venv\Scripts\python.exe -m src.genealogy.cli studio --port 8767
+
+# Calcul exact en RAM, affiche ses statistiques puis libère le monde.
+.\.venv\Scripts\python.exe -m src.genealogy.cli simulate config/genealogy/civilization.yaml --years 25 --quiet
+
+# Benchmark sans écriture ; population, lieux, durée et threads configurables.
+.\.venv\Scripts\python.exe -m src.genealogy.benchmark --population 1000000 --places 500 --years 25 --threads 4
+
+# Sauvegarde SQLite explicitement demandée, hors parcours du studio.
 .\.venv\Scripts\python.exe -m src.genealogy.cli generate config/genealogy/medieval.yaml --output output/genealogy/medieval.sqlite
 
 # Humains, elfes, nains et demi-elfes ; croisements explicites et rares.
@@ -573,3 +585,62 @@ backend massif devra écrire directement ces blocs et séparer les vivants des m
 50 millions de fiches courantes représenteraient 1,05 Go de personnes, mais les
 ancêtres décédés, unions et déplacements augmentent ce total. Le seuil de 50 millions
 sur 1 000 ans en une ou dix minutes n’est pas démontré.
+
+## Optimisation du calcul et mémoire binaire
+
+Les décisions restent annuelles et individuelles. Les mariages gardent le même
+matching séquentiel avec contrôle de parenté ; ses dépendances interdisent une
+parallélisation naïve. Les tris par catégories sont remplacés par des tris comptage
+natifs stables, les professions sont tirées en lots avec exactement les mêmes
+nombres aléatoires, et les événements restent des blocs numériques. Le chemin
+sans événement actif évite les gros tableaux temporaires. Le recensement utilise
+une réduction entière native, parallèle à partir de 250 000 vivants lorsque
+`compute_threads > 1` (défaut 4, configurable dans le JSON).
+
+Les champs historiques des personnes occupent 38 octets par enregistrement en RAM,
+les épisodes d'union 25 octets, les déplacements 17 octets. Les compteurs/cartes
+sont conservés aux recensements espacés par `snapshot_interval`, avec date finale
+incluse. Les événements gardent leurs dates exactes. Ces tailles concernent les
+buffers binaires, hors catalogues, index et capacité temporaire du simulateur.
+Les buffers ont des types et sentinelles définis dans `schema.py`, `memory.py` et
+`events.py` ; aucune instance Python par personne n'est stockée. Les données sont
+libérées progressivement lors de la finalisation pour éviter une copie globale
+avec tous les champs de travail encore présents.
+
+Les tests vérifient l'égalité exacte des personnes, unions, fermetures, migrations
+et recensements avec la version antérieure a92216d, et comparent chaque fonction
+d'exploration du backend RAM à SQLite. Les paramètres de races, événements, pays,
+périodes, divorce et remariage restent ceux du scénario. La compilation native
+peut alimenter le cache technique de Numba ; « sans écriture » désigne ici les
+données de simulation, sans archive ni sauvegarde automatique.
+
+Mesures finales sur i7-10700K, Windows, Python 3.12.13, NumPy 2.5.3,
+Numba 0.67.0, graine 42, 500 lieux dispersés, moteur natif préchauffé,
+recensements décennaux. Calculs lancés successivement, cible sans calibration.
+
+| Scénario | Ancien SQLite | Nouveau RAM | Accélération |
+| --- | ---: | ---: | ---: |
+| 1 million de fondateurs, 25 ans | 44,0 s | 10,16 s | ×4,33 |
+| 100 000 fondateurs, 1 000 ans | 336,0 s | 71,62 s | ×4,69 |
+
+Le premier monde contient 1 722 266 personnes historiques et 1 000 018 vivants,
+535 174 unions et 395 778 déplacements. Son historique binaire occupe 85,55 Mo
+(hors index/catalogues), avec pic mémoire du processus ≈277 Mio. Le premier accès
+à une personne, qui construit des index réutilisables, prend 0,31 s.
+
+Le second contient 5 817 116 personnes historiques et 348 040 vivants,
+2 168 095 unions et 3 427 502 déplacements. Son historique binaire occupe
+333,52 Mo, avec pic mémoire ≈649 Mio, index du premier accès compris ; celui-ci
+prend 1,48 s. Le retrait des écritures transfère les événements en RAM : le pic
+peut donc dépasser celui du backend qui les écrit progressivement en SQLite.
+
+Ces résultats sont identiques aux résultats démographiques précédents. Les
+empreintes de compatibilité vérifient en plus toutes les identités et tous les
+événements de scénarios humains, fantasy et d'une carte à IDs non triés. Les
+noyaux de sélection des personnes fertiles, chefs de foyer et gardiens de mineurs
+fusionnent les filtres, sans changer l'ordre des individus ni les tirages.
+
+Ces mesures ne sont pas celles d'un monde final de 50 millions. Le simulateur
+conserve encore tous les ancêtres en RAM pendant le calcul ; le benchmark cible
+50 millions / 1 000 ans reste à faire. Le temps de la première compilation et
+les éventuels essais de calibration s'ajoutent lorsqu'ils sont nécessaires.

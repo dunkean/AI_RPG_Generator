@@ -1,4 +1,4 @@
-"""Repeatable full-archive benchmark, including native simulation and indexed storage."""
+"""Repeatable exact-history benchmark; RAM by default, explicit SQLite optionally."""
 
 import argparse
 import ctypes
@@ -56,7 +56,8 @@ def main():
     parser.add_argument("--years", type=int, default=25)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--backend", choices=["compiled", "reference"], default="compiled")
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path, help="Explicit SQLite output; default is RAM only")
+    parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args()
     summary = generate(
         Scenario(
@@ -65,21 +66,44 @@ def main():
             years=args.years,
             seed=args.seed,
             backend=args.backend,
+            compute_threads=args.threads,
         ),
         args.output,
     )
-    with closing(Archive(args.output).connect()) as db:
+    if args.output is None:
+        memory, summary = summary, summary.summary
+        invalid = 0
+        for start in range(0, memory.n, 100000):
+            end = min(memory.n, start + 100000)
+            ids = np.arange(start, end, dtype=np.int32)
+            invalid += int(
+                np.sum(
+                    (memory.data["father"][start:end] >= ids)
+                    | (memory.data["mother"][start:end] >= ids)
+                )
+            )
         checks = {
-            "quick_check": db.execute("PRAGMA quick_check").fetchone()[0],
-            "places": db.execute("SELECT count(*) FROM settlements").fetchone()[0],
-            "invalid_parent_order": db.execute(
-                "SELECT count(*) FROM people WHERE father>=id OR mother>=id"
-            ).fetchone()[0],
-            "census_balance": db.execute(
-                "SELECT count(*) FROM census c WHERE population != "
-                "(SELECT sum(population) FROM settlement_census s WHERE s.year=c.year)"
-            ).fetchone()[0],
+            "places": len(memory.settlements),
+            "invalid_parent_order": invalid,
+            "census_balance": sum(
+                sum(r["population"] for r in memory.map_at(row["year"])) != row["population"]
+                for row in memory.history
+            ),
+            "disk_bytes_written": summary["disk_bytes_written"],
         }
+    else:
+        with closing(Archive(args.output).connect()) as db:
+            checks = {
+                "quick_check": db.execute("PRAGMA quick_check").fetchone()[0],
+                "places": db.execute("SELECT count(*) FROM settlements").fetchone()[0],
+                "invalid_parent_order": db.execute(
+                    "SELECT count(*) FROM people WHERE father>=id OR mother>=id"
+                ).fetchone()[0],
+                "census_balance": db.execute(
+                    "SELECT count(*) FROM census c WHERE population != "
+                    "(SELECT sum(population) FROM settlement_census s WHERE s.year=c.year)"
+                ).fetchone()[0],
+            }
     result = {
         "summary": summary,
         "peak_rss_bytes": peak_rss_bytes(),
@@ -91,9 +115,10 @@ def main():
             "platform": platform.platform(),
         },
     }
-    args.output.with_suffix(".benchmark.json").write_text(
-        json.dumps(result, indent=2), encoding="utf-8"
-    )
+    if args.output:
+        args.output.with_suffix(".benchmark.json").write_text(
+            json.dumps(result, indent=2), encoding="utf-8"
+        )
     print(json.dumps(result, indent=2))
 
 

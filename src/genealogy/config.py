@@ -278,6 +278,7 @@ class Scenario(Settings):
     schema_version: Literal[1] = 1
     seed: int = Field(default=42, ge=0)
     backend: Literal["compiled", "reference"] = "compiled"
+    compute_threads: int = Field(default=4, ge=1, le=64)
     start_year: int = Field(default=1000, ge=-100000, le=100000)
     generations: int = Field(default=5, ge=1, le=100)
     generation_years: int = Field(default=25, ge=1, le=100)

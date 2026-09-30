@@ -26,6 +26,7 @@ class CancelledError(RuntimeError):
 
 class Studio:
     def __init__(self, archive: Archive, output_dir: Path | None = None):
+        self.memory_only = output_dir is None
         self.lock = threading.RLock()
         self.archive = archive
         self.output_dir = output_dir or archive.path.parent / "web_runs"
@@ -35,7 +36,11 @@ class Studio:
         self.job = None
         self.worker = None
         self.cancel_event = threading.Event()
-        paths = sorted(self.output_dir.glob("world_*.sqlite"), key=lambda p: p.stat().st_mtime)
+        paths = (
+            []
+            if self.memory_only
+            else sorted(self.output_dir.glob("world_*.sqlite"), key=lambda p: p.stat().st_mtime)
+        )
         for path in paths[-100:]:
             try:
                 saved = Archive(path)
@@ -47,6 +52,15 @@ class Studio:
 
     @staticmethod
     def describe(archive):
+        if getattr(archive, "ephemeral", False):
+            return {
+                "name": "Monde en mémoire",
+                "seed": archive.config.seed,
+                "summary": archive.summary,
+                "created": archive.created,
+                "places": len(archive.settlements),
+                "ephemeral": True,
+            }
         with closing(archive.connect()) as db:
             metadata = dict(db.execute("SELECT key,value FROM metadata"))
         scenario = json.loads(metadata["config"])
@@ -68,6 +82,9 @@ class Studio:
             return key, self.archives[key]
 
     def config(self, archive=None):
+        current = archive or self.current()
+        if getattr(current, "ephemeral", False):
+            return current.config.model_dump(mode="json")
         with closing((archive or self.current()).connect()) as db:
             source = json.loads(
                 db.execute("SELECT value FROM metadata WHERE key='config'").fetchone()[0]
@@ -94,7 +111,7 @@ class Studio:
             entries = [
                 {"id": key, **self.descriptions[key]}
                 for key, archive in self.archives.items()
-                if archive.path.is_file()
+                if getattr(archive, "ephemeral", False) or archive.path.is_file()
             ]
             active = self.active
         return {
@@ -186,7 +203,11 @@ class Studio:
                 self.job.update(
                     year=year,
                     population=count,
-                    phase="Enregistrement de l'archive"
+                    phase=(
+                        "Finalisation du monde en mémoire"
+                        if self.memory_only
+                        else "Enregistrement de l'archive"
+                    )
                     if year == config.start_year + config.duration
                     else "Simulation annuelle",
                     progress=pilot_weight
@@ -196,20 +217,30 @@ class Studio:
         try:
             summary = generate(
                 config,
-                path,
+                None if self.memory_only else path,
                 progress,
                 calibration_progress=calibration_progress,
                 calibration_stage=calibration_stage,
             )
-            archive = Archive(path)
+            if self.memory_only:
+                archive, summary = summary, summary.summary
+            else:
+                archive = Archive(path)
             description = self.describe(archive)
             with self.lock:
                 self.archives[path.stem] = archive
                 self.descriptions[path.stem] = description
+                if self.memory_only:
+                    # Keep the active world and two recent alternatives for quick iteration.
+                    while len(self.archives) > 3:
+                        oldest = next(k for k in self.archives if k != self.active)
+                        del self.archives[oldest]
+                        del self.descriptions[oldest]
                 self.job.update(state="complete", progress=1, summary=summary, archive=path.stem)
         except Exception as exc:  # noqa: BLE001 -- job boundary reports unexpected failures too
             try:
-                path.with_suffix(".sqlite.partial").unlink(missing_ok=True)
+                if not self.memory_only:
+                    path.with_suffix(".sqlite.partial").unlink(missing_ok=True)
             except OSError:
                 pass
             with self.lock:

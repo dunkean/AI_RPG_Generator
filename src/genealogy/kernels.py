@@ -6,7 +6,125 @@ independent draws. Every accepted pair still passes an exact bounded pedigree ch
 """
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
+
+
+@njit(cache=True, nogil=True)
+def census_counts(ids, birth, sex, race, partner, minimum, maximum, year):
+    young, adults, elders, fertile, partnered = 0, 0, 0, 0, 0
+    for index in prange(len(ids)):
+        pid = ids[index]
+        age = year - birth[pid]
+        young += int(age < 15)
+        adults += int(15 <= age < 50)
+        elders += int(age >= 50)
+        eligible = sex[pid] == 1 and minimum[race[pid]] <= age <= maximum[race[pid]]
+        fertile += int(eligible)
+        partnered += int(eligible and partner[pid] >= 0)
+    return young, adults, elders, fertile, partnered
+
+
+# Separate cache identities prevent parallel code from replacing the serial kernel.
+@njit(cache=True, nogil=True, parallel=True)
+def census_counts_parallel(ids, birth, sex, race, partner, minimum, maximum, year):
+    young, adults, elders, fertile, partnered = 0, 0, 0, 0, 0
+    for index in prange(len(ids)):
+        pid = ids[index]
+        age = year - birth[pid]
+        young += int(age < 15)
+        adults += int(15 <= age < 50)
+        elders += int(age >= 50)
+        eligible = sex[pid] == 1 and minimum[race[pid]] <= age <= maximum[race[pid]]
+        fertile += int(eligible)
+        partnered += int(eligible and partner[pid] >= 0)
+    return young, adults, elders, fertile, partnered
+
+
+@njit(cache=True, nogil=True)
+def choose_activities(slots, draws, offsets, options, cumulative):
+    result = np.empty(len(slots), np.int16)
+    for index in range(len(slots)):
+        low, high = offsets[slots[index]], offsets[slots[index] + 1]
+        while low < high:
+            middle = (low + high) // 2
+            if draws[index] < cumulative[middle]:
+                high = middle
+            else:
+                low = middle + 1
+        result[index] = options[low]
+    return result
+
+
+@njit(cache=True, nogil=True)
+def fertile_ids(ids, birth, sex, race, partner, last_birth, minimum, maximum, spacing, year):
+    result = np.empty(len(ids), np.int32)
+    count = 0
+    for pid in ids:
+        r = race[pid]
+        age = year - birth[pid]
+        if (
+            sex[pid] == 1
+            and partner[pid] >= 0
+            and minimum[r] <= age <= maximum[r]
+            and year - last_birth[pid] >= spacing[r]
+        ):
+            result[count] = pid
+            count += 1
+    return result[:count].copy()
+
+
+@njit(cache=True, nogil=True)
+def household_heads(ids, partner, birth, race, dependent_age, year):
+    result = np.empty(len(ids), np.int32)
+    count = 0
+    for pid in ids:
+        p = partner[pid]
+        if (p < 0 and year - birth[pid] >= dependent_age[race[pid]]) or (p >= 0 and pid < p):
+            result[count] = pid
+            count += 1
+    return result[:count].copy()
+
+
+@njit(cache=True, nogil=True)
+def guardian_pairs(
+    ids, birth, race, partner, mother, father, death, place, age_limit, year, no_year
+):
+    children, guardians = np.empty(len(ids), np.int32), np.empty(len(ids), np.int32)
+    count = 0
+    for pid in ids:
+        if year - birth[pid] >= age_limit[race[pid]] or partner[pid] >= 0:
+            continue
+        guardian = -1
+        m, f = mother[pid], father[pid]
+        if m >= 0 and death[m] == no_year and place[m] == place[pid]:
+            guardian = m
+        elif f >= 0 and death[f] == no_year and place[f] == place[pid]:
+            guardian = f
+        if guardian >= 0:
+            children[count], guardians[count] = pid, guardian
+            count += 1
+    return children[:count].copy(), guardians[:count].copy()
+
+
+@njit(cache=True, nogil=True)
+def stable_groups(codes, group_count):
+    """Counting sort preserves within-group ID order and consumes no randomness."""
+    counts = np.zeros(group_count, np.int64)
+    for code in codes:
+        counts[code] += 1
+    starts = np.zeros(group_count, np.int64)
+    total = 0
+    for group in range(group_count):
+        starts[group] = total
+        total += counts[group]
+    cursors = starts.copy()
+    order = np.empty(len(codes), np.int64)
+    for index in range(len(codes)):
+        group = codes[index]
+        order[cursors[group]] = index
+        cursors[group] += 1
+    keys = np.flatnonzero(counts)
+    return order, keys, starts[keys], counts[keys]
 
 
 @njit(cache=True)

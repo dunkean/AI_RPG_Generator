@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from .config import load_scenario
+from .config import Scenario, load_scenario
 from .engine import generate
 from .store import Archive
 
@@ -24,6 +24,17 @@ def main():
     build.add_argument("--years", type=int)
     build.add_argument("--target", type=int)
     build.add_argument("--quiet", action="store_true")
+    simulate = commands.add_parser(
+        "simulate", help="Simulate exact binary histories in RAM; no writes"
+    )
+    simulate.add_argument("scenario", type=Path)
+    simulate.add_argument("--seed", type=int)
+    simulate.add_argument("--years", type=int)
+    simulate.add_argument("--target", type=int)
+    simulate.add_argument("--quiet", action="store_true")
+    studio = commands.add_parser("studio", help="Start the in-memory studio without creating files")
+    studio.add_argument("--port", type=int, default=8765)
+    studio.add_argument("--scenario", type=Path)
     compact = commands.add_parser(
         "compact", help="Export exact life histories as packed binary arrays"
     )
@@ -42,7 +53,7 @@ def main():
     serve.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     try:
-        if args.command == "generate":
+        if args.command in {"generate", "simulate"}:
             config = load_scenario(args.scenario)
             overrides = {
                 key: value
@@ -61,7 +72,28 @@ def main():
                 ) % 10 == 0 or year == config.start_year + config.duration:
                     print(f"{year}: {count:,} living", file=sys.stderr)
 
-            result = generate(config, args.output, None if args.quiet else progress)
+            result = generate(
+                config,
+                args.output if args.command == "generate" else None,
+                None if args.quiet else progress,
+            )
+            if args.command == "simulate":
+                result = result.summary
+        elif args.command == "studio":
+            from .server import serve
+
+            config = (
+                load_scenario(args.scenario)
+                if args.scenario
+                else Scenario(
+                    initial_population=10000,
+                    virtual_settlements=500,
+                    years=10,
+                    target_mode="report",
+                )
+            )
+            serve(generate(config, None), args.port)
+            return
         elif args.command == "compact":
             from .compact import export_compact
 

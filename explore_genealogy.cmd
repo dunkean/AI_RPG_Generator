@@ -7,21 +7,11 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
 )
-set "GENEALOGY_ARCHIVE=output\genealogy\civilization_v3_1m_500.sqlite"
-if not "%~1"=="" set "GENEALOGY_ARCHIVE=%~1"
-if not exist "%GENEALOGY_ARCHIVE%" (
-    if not "%~1"=="" (
-        echo Archive not found: "%GENEALOGY_ARCHIVE%"
-        pause
-        exit /b 1
-    )
-    ".venv\Scripts\python.exe" -m src.genealogy.cli generate config/genealogy/civilization.yaml --years 25 --output "%GENEALOGY_ARCHIVE%"
-    if errorlevel 1 (
-        pause
-        exit /b 1
-    )
+echo Open http://127.0.0.1:8767 in your browser. Keep this window open.
+echo Binary worlds stay in memory. No automatic files or SQLite writes.
+if not "%~1"=="" (
+    ".venv\Scripts\python.exe" -m src.genealogy.cli explore "%~1" --port 8767
+) else (
+    ".venv\Scripts\python.exe" -m src.genealogy.cli studio --port 8767
 )
-echo Open http://127.0.0.1:8765 in your browser. Keep this window open.
-echo Using saved archive: "%GENEALOGY_ARCHIVE%". YAML edits do not regenerate it.
-".venv\Scripts\python.exe" -m src.genealogy.cli explore "%GENEALOGY_ARCHIVE%"
 if errorlevel 1 pause

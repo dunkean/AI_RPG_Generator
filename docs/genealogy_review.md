@@ -108,7 +108,46 @@ représentatives. Il devra être explicitement distinct du monde exhaustif. Un
 aux flux, et ne pas simplement disperser 1/1000 des habitants sur toute la carte.
 **Ce moteur macro et ce couplage d’échantillonnage ne sont pas implémentés.**
 
-Le mode détaillé actuel conserve encore tous les morts en RAM et utilise SQLite
-pour l’exploration. Il ne démontre pas 50 millions sur un millénaire en une ou dix
+Le mode détaillé actuel conserve encore tous les morts en RAM. Le studio utilise
+désormais des buffers binaires en mémoire pour le calcul et l’exploration. Il ne démontre pas 50 millions sur un millénaire en une ou dix
 minutes. Le benchmark 1 000 ans mesure une chronologie complète de 100 000
 fondateurs, non un substitut au benchmark cible.
+
+
+## Revue de la phase mémoire et optimisation CPU
+
+Sol 6 xhigh et Claude Opus 5.5 (CLI local, lecture seule) ont revu la stratégie
+et les changements. Les priorités retenues : éliminer les objets Python par
+événement et SQLite pendant le calcul, conserver une interface d'exploration
+équivalente, préserver l'ordre stable et les tirages aléatoires, mesurer le moteur
+séparément des écritures. Les réductions entières du recensement sont parallèles ;
+le matching reste séquentiel. Des empreintes de la version a92216d couvrent tous
+les champs et événements humains/fantasy ; les tests RAM/SQLite vérifient les
+fonctions d'exploration, y compris backend de référence, migrations et remariages.
+
+Les remarques Opus corrigées comprennent le libellé de progression, le nombre
+de mondes conservés en RAM, les colonnes temporaires flottantes, la libération
+progressive des champs de travail, l'index des seuls résidents vivants, la lecture
+de résidence sans reconstruction de toute la famille et l'index sans duplication
+des valeurs triées. Le studio sans écriture est intentionnel ; la commande de
+sauvegarde SQLite demeure explicite. Les premiers clics peuvent encore construire
+un index de parents/unions/migrations ; ces index sont ensuite réutilisés.
+
+Le cache technique de compilation ne constitue pas une archive de simulation.
+Aucune promesse de performance à 50 millions sur 1 000 ans n'est faite à partir
+des benchmarks réduits.
+
+
+Mesures finales, graine 42 / 500 lieux : 1 million de fondateurs sur 25 ans en
+10,16 s contre 44,0 s auparavant (×4,33), et 100 000 fondateurs sur 1 000 ans en
+71,62 s contre 336,0 s (×4,69). Les populations finales sont respectivement
+1 000 018 et 348 040, les historiques 1 722 266 et 5 817 116 personnes. Zéro
+écriture de données de simulation. Le premier accès indexé à une personne prend
+0,31 / 1,48 s ; ces coûts ne sont pas masqués dans les temps du calcul.
+
+Validation : 236 tests Python, Ruff du module et tests dédiés, et parcours Edge
+headless du studio final (graine, 500 lieux, chronologie, configuration, exploration,
+mobile, protection contre les doubles soumissions). Les empreintes couvrent aussi
+une carte explicite à IDs non triés, crise, migrations et divorces renforcés.
+Les scénarios avec règles personnalisées, calibration et rétention du monde actif
+sont comparés au chemin SQLite de compatibilité.
