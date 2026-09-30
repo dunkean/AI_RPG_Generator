@@ -323,7 +323,7 @@ span {
     <div class="container">
         <h1 id="_home">{{ name }}</h1>
         <p>{{ details.description.description }}</p>
-		{% for site_name, site_img in details.global_views.items() %}
+		{% for site_name, site_img in details.description.global_views.items() %}
 		<img src="{{ site_img }}" alt="{{site_name}}">
 		{% endfor %}
 		<div id="_lore" class="lore">
@@ -352,7 +352,7 @@ span {
                     {% for site_key, site_value in value.sites_details.items() %}
                     <div class="site">
                         <h5>{{ site_key }}</h5>
-						<img class="site_img" src="{{ value.sites_img[site_key] }}" alt="{{ site_key }}_{{ name }}">
+						{% if site_key in value.sites_img %}<img class="site_img" src="{{ value.sites_img[site_key] }}" alt="{{ site_key }}_{{ name }}">{% endif %}
                         <p>{{ site_value }}</p>
                         <p><b>Keywords:</b> {{ (", ").join(value.sites_keywords[site_key]) }}</p>
                     </div>
@@ -482,7 +482,7 @@ span {
 					<p>{{ npc.age }}</p>
 					<p>{{ npc.origin }}</p>
 				<a href="#{{ npc_name }}">
-				<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}" width="200px">
+				{% if npc.img_path %}<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}" width="200px">{% endif %}
 				</a>
 				</div>
 				{% endfor %}
@@ -498,7 +498,7 @@ span {
 					<p>{{ npc.age }}</p>
 					<p>{{ npc.origin }}</p>
 				<a href="#{{ npc_name }}">
-				<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}" width="200px">
+				{% if npc.img_path %}<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}" width="200px">{% endif %}
 				</a>
 				</div>
 				{% endfor %}
@@ -507,7 +507,7 @@ span {
 			{% for npc_name, npc in npcs.items() %}
 				<div id="{{ npc_name }}" class="npc">
 					<h1 class="npc-name">{{ npc_name }}</h1>
-					<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}">
+					{% if npc.img_path %}<img class="portrait" src="{{npc.img_path}}" alt="{{ npc.fullname }}">{% endif %}
 					<p class="npc-quote">{{ npc.quote }}</p>
 					<p class="npc-short-description">{{ npc.short_description }}</p>
 					{% if 'relationship' in npc %}

@@ -1,0 +1,20 @@
+project_id: Compagnons
+
+setting:
+  lore: >
+    Forgotten Realms (DnD)
+  type: Medieval fantasy
+
+community:
+  description: >
+    The Compagnons are a troop of mercenary that took residence in a old abandonned monastery lost in a deep canyon far away from cities and kingdoms near the troll mountains. They live on their previous bounty and rewards, and prepare and train for the next missions. They live, for some of them, with their family that stay behind when the troop goes on mission.
+  type: small community
+  scale: local
+  population: 30
+  race_ratio:
+    human: 0.6
+    half-elf: 0.15
+    elf: 0.05
+    dwarf: 0.15
+    halfling: 0.025
+    gnome: 0.025

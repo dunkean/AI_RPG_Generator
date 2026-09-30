@@ -2,12 +2,12 @@
 import os
 from pathlib import Path
 
-from rpg_generator import query, generate
-import prompt as P
-from parsers import json_parser, table_parser
+from clean_query_manager import query, generate
+import clean_prompt as P
+from parsers import parse_json, parse_table
 from logger import Logger
 from llm import ChatGPT
-import data_formatter as V
+import validator as V
 import generator as G
 
 from defines import OUTPUT_FOLDER, INTERMEDIATE_FOLDER, LOG_FOLDER, CACHE_FOLDER, PORTRAITS_FOLDER, BUILDINGS_FOLDER
@@ -25,7 +25,6 @@ SCALE = "local"
 TYPE = "small community"
 POPULATION = 80
 SEED = 42
-# ratio = {"human": 0.75, "elf": 0.05, "half-elf": 0.05, "dwarf": 0.1, "halfling": 0.025, "gnome": 0.025}
 RACE_RATIO = {"human": 0.6, "half-elf": 0.15, "elf":0.05, "dwarf": 0.15, "halfling": 0.025, "gnome": 0.025}
 # potentially all generation parameters (groups distributions, and so on)
 
@@ -38,16 +37,15 @@ content = {
         "seed": SEED,  # "optional"
         "instruction": INSTRUCTION,  # "optional"
     },
-    "lore": {
+    "setting": {
         "bootstrap_description": LORE,
-        "type": WORLD_TYPE  # "optional"
+        "type": WORLD_TYPE
     },
     "details": {
+        "type": TYPE,
         "scale": SCALE,  # "optional"
         "population": POPULATION,  # "optional"
         "bootstrap_description": GROUP_DESCRIPTION,
-        "bootstrap_forced_context": "",
-        "type": TYPE,  # "optional"
         "races": RACE_RATIO  # "optional"
     }
 }
@@ -66,85 +64,107 @@ with open("openai.key", "r") as f:
 # LLM = ChatGPT(Logger, INSTRUCTION, model_name="gpt-3.5-turbo", api_key=api_key, api_id=api_id)
 # Q = query.LLM_Query(LLM, Logger)
 
+
 # Bootstrap query
 query(
+    "bootstrap",
     content,
     (f"{PROJECT_ID}_bootstrap", P.bootstrap),
-    json_parser, V.bootstrap
+    parse_json, V.bootstrap
 )
 
 # Query Details
-categories_to_details = ["customs", "resources", "history", "external_influences", "timeline", "sites", "anecdotes"]
+detail_categories = ["customs", "resources", "history", "timeline", "sites", "anecdotes"]
 query(
+    "detail",
     content,
-    [(f"{PROJECT_ID}_details_{category}", P.details, category) for category in categories_to_details],
-    json_parser, V.details, 
+    [(f"{PROJECT_ID}_detail_{category}", P.details, category) for category in detail_categories],
+    parse_json, V.details
 )
+
+# Query External Influences
+query(
+    "external_influences",
+    content,
+    (f"{PROJECT_ID}_external_influences", P.external_influences),
+    parse_json, V.external_influences
+)
+
+# for each external influence, query bootstrap
 
 # Query Workplaces
 query(
+    "workplaces",
     content,
     (f"{PROJECT_ID}_workplaces", P.workplaces),
-    table_parser, V.workplaces
+    parse_table, V.workplaces
 )
 
 # Generate population and groups
 generate(
+    "population",
     content, G.population
 )
 
 # Query population per group
 query(
+    "population",
     content,
     [(f"{PROJECT_ID}_population_{group_name}", P.population, group)
         for group_name, group in content["groups"].items()],
-    table_parser, V.population
+    parse_table, V.population
 )
 
 # Generate employees
 generate(
+    "employees",
     content, G.employees
 )
 
 # Query employees per workplace
 query(
+    "employees",
     content,
     [(f"{PROJECT_ID}_employees_{workplace_name}", P.employees, workplace)
         for workplace_name, workplace in content["workplaces"].items()],
-    table_parser, V.employees
+    parse_table, V.employees
 )
 
 # Query workplaces details
 query(
+    "workplaces_details",
     content,
     [(f"{PROJECT_ID}_workplace_{workplace_name}", P.workplace_details, workplace)
         for workplace_name, workplace in content["workplaces"].items()],
-    json_parser, V.workplace_details
+    parse_json, V.workplace_details
 )
 
 # Query architecture and points of interest
 query(
+    "architecture_and_poi",
     content,
     (f"{PROJECT_ID}_architecture_and_poi", P.architecture_and_poi),
-    json_parser, V.architecture_and_poi
+    parse_json, V.architecture_and_poi
 )
 
 # Query workplaces sites
 query(
+    "workplace_sites",
     content,
     [(f"{PROJECT_ID}_workplace_sites_{workplace_name}", P.workplace_sites, workplace)
         for workplace_name, workplace in content["workplaces"].items()],
-    json_parser, V.workplace_sites
+    parse_json, V.workplace_sites
 )
 
 # Query key figures per groups and workplaces
-key_figures = [member for group in content["groups"].values() for member in group["members"] if member["key_figure"]]
-+ [member for workplace in content["workplaces"].values() for member in workplace["employees"] if member["key_figure"]]
+key_figures = [member for group in content["groups"].values() for member in group["members"] if member["key_figure"]] + [member for workplace in content["workplaces"].values() for member in workplace["employees"] if member["key_figure"]]
+
 query(
+    "key_figures",
     content,
     [(f"{PROJECT_ID}_key_figure_{key_figure['name']}", P.key_figure, key_figure)
         for key_figure in key_figures],
-    json_parser, V.key_figure
+    parse_json, V.key_figure
 )
 
 # Generate Portraits

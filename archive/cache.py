@@ -11,6 +11,7 @@ if os.path.exists(cache_file):
 
 
 def hasCache(id, key):
+    pass
 #     return key in cache
 
 # def getCache(cache, key):

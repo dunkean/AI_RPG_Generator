@@ -1,0 +1,34 @@
+project_id: Enclave
+
+setting:
+  lore: >
+    A medieval fantasy world. Only one God exists (the god is non-gendered
+    and called "the Old One") but people believes also in local beliefs.
+    No undead. A single big nation (empire) on a unique continent the size
+    of europe.
+  type: Medieval fantasy
+
+community:
+  description: >
+    Deep within the heart of the formidable mountains lies The Forgotten
+    Enclave, a resilient community eking out an existence within the vast
+    ruins of a once-majestic city. Cut off from the outside world, these
+    settlers and beggars have embraced their precarious existence,
+    fashioning crude shelters amidst crumbling architecture and overgrown
+    foliage. Silent whispers of a lost civilization echo through the
+    labyrinthine streets, while weathered statues and dilapidated
+    structures stand as testament to a grandeur long past. Life in The
+    Forgotten Enclave is a constant struggle for survival, as residents
+    scavenge for meager resources, relying on their resourcefulness and
+    communal bonds to endure within this hauntingly beautiful, forgotten
+    realm.
+  type: small community
+  scale: local
+  population: 80
+  race_ratio:
+    human: 0.6
+    half-elf: 0.15
+    elf: 0.05
+    dwarf: 0.15
+    halfling: 0.025
+    gnome: 0.025

@@ -1,0 +1,98 @@
+generation:
+  seed: 42
+  mean_group_size: 7
+  temperature: 0.9
+  max_retries: 3
+  max_concurrent_queries: 3
+
+provider:
+  type: openai
+  model: gpt-6-luna
+  temperature: 1
+  max_tokens: 16384
+  reasoning_effort: low
+
+image:
+  provider: comfyui
+  model: qwen
+  portrait_width: 768
+  portrait_height: 1024
+  building_width: 1024
+  building_height: 768
+  comfyui_url: "http://127.0.0.1:8188"
+  comfyui_timeout: 600.0
+  models:
+    flux:
+      type: flux
+      params:
+        unet: "flux1-dev-fp8-e4m3fn.safetensors"
+        clip1: "t5xxl_fp16.safetensors"
+        clip2: "clip_l.safetensors"
+        vae: "ae.safetensors"
+        weight_dtype: "default"
+        sampler: "euler"
+        scheduler: "simple"
+        steps: 20
+    flux2:
+      type: flux
+      params:
+        unet: "flux2-dev.safetensors"
+        clip1: "t5xxl_fp16.safetensors"
+        clip2: "clip_l.safetensors"
+        vae: "ae.safetensors"
+        weight_dtype: "fp8_e4m3fn"
+        sampler: "euler"
+        scheduler: "simple"
+        steps: 20
+    sdxl_turbo:
+      type: sdxl_turbo
+      params:
+        checkpoint: "sd_xl_turbo_1.0_fp16.safetensors"
+        sampler: "euler_ancestral"
+        scheduler: "normal"
+        steps: 4
+        cfg_scale: 1.0
+    cogview:
+      type: cogview
+      params:
+        checkpoint: "cogview3-plus.safetensors"
+        steps: 30
+        cfg_scale: 7.5
+    qwen:
+      type: qwen
+      params:
+        unet: "qwen_image_fp8_e4m3fn.safetensors"
+        clip: "qwen_2.5_vl_7b_fp8_scaled.safetensors"
+        vae: "qwen_image_vae.safetensors"
+        weight_dtype: "default"
+        sampler: "euler"
+        scheduler: "simple"
+        steps: 20
+        cfg_scale: 4.0
+        shift: 3.1
+
+folders:
+  output: output
+  cache: cache
+  log: log
+  portraits: portraits
+  buildings: buildings
+
+group_categories:
+  - culture
+  - customs
+  - goals
+  - resources
+  - history
+  - external_influences
+  - timeline
+  - sites
+  - anecdotes
+
+detail_categories:
+  - customs
+  - resources
+  - history
+  - timeline
+  - sites
+  - anecdotes
