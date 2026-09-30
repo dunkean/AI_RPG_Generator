@@ -1094,7 +1094,14 @@ class Engine:
         }
 
 
-def generate(config: Scenario, path: Path, progress=None, rules=(), calibration_progress=None):
+def generate(
+    config: Scenario,
+    path: Path,
+    progress=None,
+    rules=(),
+    calibration_progress=None,
+    calibration_stage=None,
+):
     """Publish only a complete archive; never overwrite an existing generation."""
     rules = tuple(rules)
     descriptors = [
@@ -1126,7 +1133,9 @@ def generate(config: Scenario, path: Path, progress=None, rules=(), calibration_
         )
         initial = config.initial_population
         iterations = []
-        for _ in range(4):
+        for attempt in range(4):
+            if calibration_stage:
+                calibration_stage(attempt + 1, 4)
             # Match capacity per founder at the proposed full scale. Capacity is soft
             # demographic pressure, so a linear pilot with unscaled fixed sites is invalid.
             real = config.model_copy(update={"initial_population": initial})

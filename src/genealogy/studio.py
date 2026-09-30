@@ -150,6 +150,22 @@ class Studio:
             0.25 if config.target_population and config.target_mode == "calibrate_founders" else 0
         )
 
+        calibration_pass, calibration_limit = 1, 4
+
+        def calibration_stage(attempt, limit):
+            nonlocal calibration_pass, calibration_limit
+            if self.cancel_event.is_set():
+                raise CancelledError("Génération annulée")
+            calibration_pass, calibration_limit = attempt, limit
+            with self.lock:
+                self.job.update(
+                    calibration_pass=attempt,
+                    calibration_limit=limit,
+                    phase=f"Calibration des fondateurs · essai {attempt}/{limit}",
+                    year=config.start_year,
+                    progress=pilot_weight * (attempt - 1) / limit,
+                )
+
         def calibration_progress(year, count):
             if self.cancel_event.is_set():
                 raise CancelledError("Génération annulée")
@@ -157,8 +173,10 @@ class Studio:
                 self.job.update(
                     year=year,
                     population=count,
-                    phase="Calibration · échantillon",
-                    progress=pilot_weight * (year - config.start_year) / config.duration,
+                    phase=f"Calibration des fondateurs · essai {calibration_pass}/{calibration_limit}",
+                    progress=pilot_weight
+                    * (calibration_pass - 1 + (year - config.start_year) / config.duration)
+                    / calibration_limit,
                 )
 
         def progress(year, count):
@@ -176,7 +194,13 @@ class Studio:
                 )
 
         try:
-            summary = generate(config, path, progress, calibration_progress=calibration_progress)
+            summary = generate(
+                config,
+                path,
+                progress,
+                calibration_progress=calibration_progress,
+                calibration_stage=calibration_stage,
+            )
             archive = Archive(path)
             description = self.describe(archive)
             with self.lock:

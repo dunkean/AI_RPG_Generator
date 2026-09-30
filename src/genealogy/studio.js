@@ -518,6 +518,7 @@ async function catalogue() {
     : list.active;
 }
 
+let generationSubmitting = false;
 async function poll() {
   let status;
   try {
@@ -528,12 +529,16 @@ async function poll() {
     pollTimer = setTimeout(() => safely(poll)(), 1500);
     return;
   }
-  $("generate").disabled = status.state === "running";
+  $("generate").disabled = generationSubmitting || status.state === "running";
   $("cancelGeneration").hidden = status.state !== "running";
   $("progressBox").hidden = status.state === "idle";
   $("progress").value = status.progress ?? 0;
   if (status.state === "running") {
-    $("progressText").textContent = status.phase + " · année " + status.year;
+    const phase =
+      status.phase?.startsWith("Calibration") && !status.calibration_pass
+        ? "Calibration des fondateurs · essais pilotes (4 maximum)"
+        : status.phase;
+    $("progressText").textContent = phase + " · année " + status.year;
     $("progressCount").textContent =
       fmt(status.population) +
       " habitants · " +
@@ -573,6 +578,8 @@ $("cancelGeneration").onclick = safely(async () => {
   await api("cancel", {});
 });
 $("generate").onclick = safely(async () => {
+  if (generationSubmitting) return;
+  generationSubmitting = true;
   $("generate").disabled = true;
   $("openResult").hidden = true;
   try {
@@ -583,9 +590,11 @@ $("generate").onclick = safely(async () => {
     populate(validated.scenario);
     const job = await api("generate", { scenario: config });
     submittedJob = job.id;
+    generationSubmitting = false;
     clearTimeout(pollTimer);
     await poll();
   } catch (e) {
+    generationSubmitting = false;
     $("generate").disabled = false;
     throw e;
   }

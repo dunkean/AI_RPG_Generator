@@ -334,7 +334,7 @@ Les capacités effectives sont sauvegardées dans la table `settlements`.
 ```
 
 La cible n'ajoute pas des naissances artificielles. Des pilotes à capacité par fondateur équivalente estiment le rapport
-population finale/fondateurs, puis ajustent **le nombre initial de personnes** lorsque `target_mode: calibrate_founders`. Le pilote est densifié pour éviter un marché matrimonial presque vide, et une itération affine l’estimation jusqu’à quatre essais.
+population finale/fondateurs, puis ajustent **le nombre initial de personnes** lorsque `target_mode: calibrate_founders`. Le pilote est densifié pour éviter un marché matrimonial presque vide, et une itération affine l’estimation jusqu’à quatre essais. Ces essais sont numérotés dans la progression, qui reste croissante ; leur calendrier recommence avant la simulation finale, sans relancer le job.
 Cette estimation reste approximative, surtout si les petits marchés matrimoniaux,
 capacités fixes ou fortes crises rendent la croissance non linéaire.
 `calibration_population` augmente la taille du pilote ; `target_tolerance`

@@ -102,6 +102,36 @@ def test_target_calibration_reports_progress(studio):
     assert studio.status()["summary"]["calibration"]["pilot_initial"] == 100
 
 
+def test_calibration_passes_are_numbered_without_progress_restart(studio, monkeypatch):
+    from src.genealogy.engine import generate as real_generate
+
+    observations, calls = [], []
+
+    def controlled(config, path, progress, calibration_progress, calibration_stage):
+        calls.append(path)
+        for attempt in range(1, 5):
+            calibration_stage(attempt, 4)
+            observations.append(studio.status())
+            for offset in (1, 2):
+                calibration_progress(config.start_year + offset, 50)
+                observations.append(studio.status())
+        return real_generate(
+            config.model_copy(update={"target_population": None}), path, progress
+        )
+
+    monkeypatch.setattr("src.genealogy.studio.generate", controlled)
+    studio.start({"scenario": {"initial_population": 30, "target_population": 100, "years": 2}})
+    studio.worker.join(timeout=10)
+    assert studio.status()["state"] == "complete"
+    assert len(calls) == 1  # four pilots are part of one submitted job
+    assert {s["id"] for s in observations} == {studio.status()["id"]}
+    percentages = [s["progress"] for s in observations]
+    assert percentages == sorted(percentages)
+    assert percentages[-1] == 0.25
+    for observation in observations:
+        assert f"essai {observation['calibration_pass']}/4" in observation["phase"]
+
+
 def test_studio_http_validation_generation_assets_and_origin(studio):
     with ThreadingHTTPServer(("127.0.0.1", 0), make_handler(studio.current(), studio)) as server:
         worker = threading.Thread(target=server.serve_forever, daemon=True)
