@@ -10,10 +10,13 @@ Les paramètres médiévaux sont **des choix de worldbuilding**, pas une
 reconstitution historique validée. L'objectif de ce prototype est de produire
 une histoire cohérente, mesurable et ajustable avant d'y greffer le monde.
 
+Pour comprendre les règles, l’ordre annuel et l’architecture du code :
+[guide HTML illustré et autonome](genealogy-architecture.html).
+
 ## Lancer et explorer
 
 Sous Windows, double-cliquer sur `explore_genealogy.cmd`, puis ouvrir
-http://127.0.0.1:8768. Le lanceur démarre une petite population de démonstration
+http://127.0.0.1:8772. Le lanceur démarre une petite population de démonstration
 **en RAM**, sans produire de fichier ni d'archive SQLite. Garder sa fenêtre
 ouverte. Le scénario « civilisation » permet ensuite de configurer un calcul massif.
 Les mondes sont éphémères : le serveur garde le monde actif et deux alternatives

@@ -1,0 +1,1885 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Population & généalogie — anatomie du prototype</title>
+    <style>
+      :root {
+        --ink: #243b44;
+        --muted: #667779;
+        --paper: #f5f2e9;
+        --card: #fffefa;
+        --line: #deded1;
+        --green: #246c61;
+        --orange: #b45f30;
+        --blue: #386789;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 25px;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+      }
+      aside {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: 260px;
+        padding: 30px 22px;
+        background: #203c41;
+        color: #eaf0e5;
+        overflow: auto;
+      }
+      aside strong {
+        display: block;
+        font-size: 20px;
+      }
+      aside p {
+        font-size: 12px;
+        color: #b4cec8;
+      }
+      nav a {
+        display: block;
+        color: #d3e2dc;
+        text-decoration: none;
+        font-size: 13px;
+        padding: 7px 9px;
+        border-left: 2px solid transparent;
+      }
+      nav a:hover,
+      nav a.active {
+        background: #315155;
+        border-color: #a4cba9;
+        color: white;
+      }
+      main {
+        margin-left: 260px;
+        max-width: 1320px;
+        padding: 45px 55px 80px;
+      }
+      header {
+        margin-bottom: 36px;
+      }
+      h1 {
+        font-size: clamp(32px, 4vw, 51px);
+        line-height: 1.1;
+        max-width: 850px;
+        letter-spacing: -1.7px;
+        margin: 18px 0;
+      }
+      h2 {
+        font-size: 29px;
+        line-height: 1.25;
+        margin: 0 0 20px;
+      }
+      h3 {
+        font-size: 20px;
+        line-height: 1.4;
+        margin: 25px 0 10px;
+      }
+      p {
+        margin: 10px 0 16px;
+      }
+      section {
+        margin-bottom: 34px;
+        padding: 30px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 13px;
+      }
+      .eyebrow {
+        font: 700 12px/1.4 system-ui;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--green);
+      }
+      .lead {
+        font-size: 19px;
+        color: var(--muted);
+        max-width: 850px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 30px;
+        background: #e5eee4;
+        color: var(--green);
+        font-size: 12px;
+        margin: 3px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+      .tile {
+        padding: 17px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      .tile strong {
+        display: block;
+        color: var(--green);
+      }
+      .note {
+        border-left: 4px solid var(--orange);
+        background: #fbf0df;
+        padding: 15px 20px;
+        margin: 20px 0;
+      }
+      .good {
+        border-color: var(--green);
+        background: #eaf1e8;
+      }
+      code {
+        background: #eef0e8;
+        border-radius: 4px;
+        padding: 2px 5px;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      pre {
+        background: #203c41;
+        color: #e5eee4;
+        padding: 20px;
+        border-radius: 8px;
+        overflow: auto;
+        font:
+          13px/1.7 Consolas,
+          monospace;
+      }
+      pre code {
+        background: none;
+        padding: 0;
+        color: inherit;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+        margin: 15px 0;
+      }
+      th,
+      td {
+        padding: 11px 13px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+        text-align: left;
+      }
+      th {
+        color: var(--green);
+        background: #edf0e6;
+        font-weight: 650;
+      }
+      td:first-child {
+        font-weight: 550;
+      }
+      a {
+        color: var(--green);
+      }
+      .diagram {
+        width: 100%;
+        height: auto;
+        display: block;
+        margin: 20px 0;
+        background: #f5f7ee;
+        border-radius: 10px;
+      }
+      .diagram text {
+        font-family: system-ui, sans-serif;
+        fill: var(--ink);
+      }
+      .diagram rect {
+        fill: #fffefa;
+        stroke: #bacbc1;
+        stroke-width: 1.5;
+      }
+      .diagram .accent {
+        fill: #dcebe0;
+        stroke: #246c61;
+      }
+      .diagram .arrow {
+        fill: none;
+        stroke: #537c76;
+        stroke-width: 2;
+        marker-end: url(#arrow);
+      }
+      .caption {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .steps {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+        margin: 20px 0;
+      }
+      button {
+        font: inherit;
+        border: 1px solid #c7d5ca;
+        border-radius: 7px;
+        padding: 9px 12px;
+        color: var(--green);
+        background: #f4f6ed;
+        cursor: pointer;
+      }
+      button[aria-pressed="true"] {
+        color: white;
+        background: var(--green);
+      }
+      #stepDetail {
+        min-height: 105px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+      }
+      details {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 12px 0;
+        padding: 12px 17px;
+      }
+      summary {
+        font-weight: 650;
+        cursor: pointer;
+      }
+      .formula {
+        padding: 15px 20px;
+        background: #ecf1e8;
+        border-radius: 8px;
+        font:
+          14px/1.7 Consolas,
+          monospace;
+        overflow: auto;
+      }
+      .small {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      footer {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-top: 20px;
+      }
+      ul,
+      ol {
+        padding-left: 23px;
+      }
+      li {
+        margin: 6px 0;
+      }
+      .module {
+        white-space: nowrap;
+      }
+      .hidden {
+        display: none;
+      }
+      @media (max-width: 1000px) {
+        aside {
+          width: 210px;
+          padding: 24px 14px;
+        }
+        main {
+          margin-left: 210px;
+          padding: 30px 25px;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        section {
+          padding: 23px;
+        }
+      }
+      @media (max-width: 700px) {
+        aside {
+          position: relative;
+          width: 100%;
+          padding: 20px;
+        }
+        nav {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+        main {
+          margin: 0;
+          padding: 24px 12px;
+        }
+        section {
+          padding: 20px 16px;
+        }
+        h2 {
+          font-size: 25px;
+        }
+      }
+      @media print {
+        aside,
+        .toolbar,
+        .steps {
+          display: none;
+        }
+        main {
+          margin: 0;
+          max-width: none;
+          padding: 0;
+        }
+        body {
+          font-size: 11px;
+          background: white;
+        }
+        section {
+          break-inside: auto;
+          margin: 12px 0;
+          padding: 15px;
+        }
+        h2,
+        h3 {
+          break-after: avoid;
+        }
+        pre,
+        .diagram,
+        table,
+        .note {
+          break-inside: avoid;
+        }
+        details > * {
+          display: block !important;
+        }
+        a {
+          color: inherit;
+        }
+        h1 {
+          font-size: 30px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <strong>Population<br />& généalogie</strong>
+      <p>Anatomie du prototype · guide de lecture du code</p>
+      <nav>
+        <a href="#modele">01 · Modèle réellement simulé</a
+        ><a href="#architecture">02 · Architecture & flux</a
+        ><a href="#configuration">03 · Configuration & carte</a
+        ><a href="#fondateurs">04 · Population fondatrice</a
+        ><a href="#annee">05 · Une année de simulation</a
+        ><a href="#regles">06 · Règles individuelles</a
+        ><a href="#politique">07 · Nations & chronologie</a
+        ><a href="#regulation">08 · Régulation démographique</a
+        ><a href="#donnees">09 · Données & mémoire</a
+        ><a href="#exploration">10 · Exploration & interface</a
+        ><a href="#performance">11 · Déterminisme & calcul</a
+        ><a href="#code">12 · Carte du code</a
+        ><a href="#extension">13 · Où intervenir</a
+        ><a href="#limites">14 · Limites & vocabulaire</a>
+      </nav>
+    </aside>
+    <main>
+      <header>
+        <div class="eyebrow">Documentation de l’implémentation</div>
+        <h1>Comment se fabrique<br />l’histoire d’une population</h1>
+        <p class="lead">
+          Du scénario aux personnes, des personnes aux unions, puis aux
+          naissances et migrations : les mécanismes, leur ordre exact et les
+          endroits du code à modifier.
+        </p>
+        <span class="badge">Lecture du code · 1 octobre 2026</span
+        ><span class="badge">Socle Git : 73823c2</span
+        ><span class="badge">HTML autonome · lecture hors ligne</span>
+        <div class="toolbar">
+          <button id="print">Imprimer / exporter en PDF</button
+          ><span class="small"
+            >Les diagrammes restent disponibles sans JavaScript.</span
+          >
+        </div>
+      </header>
+
+      <section id="modele">
+        <div class="eyebrow">01 / Le modèle</div>
+        <h2>Un historique individuel, calculé année par année</h2>
+        <p>
+          Le moteur actuel crée réellement chaque fondateur et chaque enfant. Il
+          conserve les morts, les liens père/mère, les épisodes d’union et les
+          déplacements datés. L’arbre est une lecture de ces liens enregistrés.
+          La simulation fait <strong>un seul parcours</strong> du scénario.
+        </p>
+        <div class="grid">
+          <div class="tile">
+            <strong>Unité de calcul</strong>Une personne identifiée par son
+            indice dans des tableaux numériques. L’âge est
+            <code>année − naissance</code>. Les dates ont une précision
+            annuelle.
+          </div>
+          <div class="tile">
+            <strong>Unité spatiale</strong>Un lieu de vie avec un identifiant,
+            des coordonnées, une capacité, des activités et éventuellement des
+            poids de peuples.
+          </div>
+          <div class="tile">
+            <strong>Ce qui est échantillonné</strong>Les marqueurs de personnes
+            dans l’atlas visuel. Les effectifs des cohortes affichées sont
+            calculés sur toute la population du lieu.
+          </div>
+          <div class="tile">
+            <strong>Ce qui est reconstruit</strong>Les traits d’infécondité et
+            de choix sans enfant, à partir de la graine et de l’identité. La
+            généalogie elle-même est conservée.
+          </div>
+        </div>
+        <p class="note">
+          L’implémentation actuelle utilise NumPy et des noyaux CPU compilés
+          avec Numba. Elle conserve tous les individus historiques en mémoire.
+          Le moteur par cohortes avec ascendance générée à la demande, évoqué
+          pendant la conception, reste une autre stratégie possible.
+        </p>
+        <p>
+          Les paramètres médiévaux et fantasy sont des hypothèses de
+          worldbuilding. Le moteur impose une cohérence mécanique des liens ;
+          les taux et distributions n’ont pas été calibrés contre une population
+          historique de référence.
+        </p>
+      </section>
+
+      <section id="architecture">
+        <div class="eyebrow">02 / Les flux</div>
+        <h2>Trois couches : configurer, simuler, explorer</h2>
+        <svg
+          class="diagram"
+          viewBox="0 0 950 460"
+          role="img"
+          aria-label="Architecture : navigateur, serveur studio, moteur et archive mémoire"
+        >
+          <defs>
+            <marker
+              id="arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M0 0 L10 5 L0 10z" fill="#537c76" />
+            </marker>
+          </defs>
+          <rect x="25" y="30" width="260" height="105" rx="9" />
+          <text x="45" y="62" font-weight="700">Navigateur · studio.js</text>
+          <text x="45" y="87" font-size="14">
+            Formulaires / carte / atlas / arbre
+          </text>
+          <text x="45" y="111" font-size="13">
+            Canvas + SVG + Voronoï d’affichage
+          </text>
+          <rect x="350" y="30" width="250" height="105" rx="9" />
+          <text x="370" y="62" font-weight="700">server.py → studio.py</text>
+          <text x="370" y="87" font-size="14">
+            API JSON locale + tâches de calcul
+          </text>
+          <text x="370" y="111" font-size="13">
+            Verrou : un calcul actif par serveur
+          </text>
+          <rect x="665" y="30" width="260" height="105" rx="9" />
+          <text x="685" y="62" font-weight="700">config.py · Scenario</text>
+          <text x="685" y="87" font-size="14">
+            Validation, carte, références
+          </text>
+          <text x="685" y="111" font-size="13">
+            Aperçu : carte + politique seulement
+          </text>
+          <path class="arrow" d="M285 75H350" />
+          <path class="arrow" d="M600 75H665" />
+          <path class="arrow" d="M475 135V210" />
+          <rect
+            class="accent"
+            x="350"
+            y="210"
+            width="250"
+            height="100"
+            rx="9"
+          />
+          <text x="370" y="244" font-weight="700">
+            engine.py · Engine.run()
+          </text>
+          <text x="370" y="270" font-size="14">
+            Boucle annuelle + tableaux NumPy
+          </text>
+          <text x="370" y="292" font-size="13">
+            kernels / politics / regulation / rules
+          </text>
+          <rect x="665" y="210" width="260" height="100" rx="9" />
+          <text x="685" y="244" font-weight="700">MemoryArchive</text>
+          <text x="685" y="270" font-size="14">
+            Personnes + unions + migrations
+          </text>
+          <text x="685" y="292" font-size="13">
+            Recensements + index d’exploration
+          </text>
+          <path class="arrow" d="M600 260H665" />
+          <rect x="25" y="210" width="260" height="100" rx="9" />
+          <text x="45" y="244" font-weight="700">Progression / annulation</text>
+          <text x="45" y="270" font-size="14">
+            Retour au studio à chaque fin d’année
+          </text>
+          <text x="45" y="292" font-size="13">
+            Annulation au prochain point de contrôle
+          </text>
+          <path class="arrow" d="M350 260H285" />
+          <path class="arrow" d="M795 310V370H155V135" />
+          <text x="310" y="395" font-size="14">
+            Lecture après calcul : /world · /map · /person · /lineage ·
+            /resident-atlas
+          </text>
+          <text x="310" y="420" font-size="13">
+            Les requêtes d’exploration ciblent une archive précise, même pendant
+            un nouveau calcul.
+          </text>
+        </svg>
+        <p>
+          Le studio publie une nouvelle archive seulement si le calcul réussit.
+          Il garde le monde actif et deux alternatives récentes. Un calcul en
+          cours peut donc coexister avec plusieurs grands mondes déjà présents
+          en RAM.
+        </p>
+        <p>
+          Le module <code>src/genealogy/</code> est indépendant du pipeline
+          principal de création de communautés <code>src/pipeline.py</code>. Il
+          fonctionne sans requête LLM, clé API ni génération d’images. La CLI
+          peut aussi calculer sans navigateur.
+        </p>
+      </section>
+
+      <section id="configuration">
+        <div class="eyebrow">03 / Entrées</div>
+        <h2>Ce que le scénario décrit</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Bloc</th>
+                <th>Responsabilité</th>
+                <th>Point à connaître</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Graine, durée, populations</td>
+                <td>
+                  Reproductibilité, fondateurs, horizon, plafond optionnel.
+                </td>
+                <td>
+                  <code>years</code> prévaut ; sinon durée =
+                  <code>generations × generation_years</code>. Une génération
+                  sert ici à exprimer une durée.
+                </td>
+              </tr>
+              <tr>
+                <td>Demography / Society</td>
+                <td>
+                  Fertilité, mortalité, unions, divorce, migrations,
+                  transmission sociale.
+                </td>
+                <td>
+                  Paramètres globaux avec substitutions par peuple et
+                  changements chronologiques.
+                </td>
+              </tr>
+              <tr>
+                <td>Races / Crossbreeding</td>
+                <td>
+                  Poids initiaux, biologie et compatibilités des croisements.
+                </td>
+                <td>
+                  Les croisements entre peuples différents doivent être
+                  autorisés par leurs règles.
+                </td>
+              </tr>
+              <tr>
+                <td>SettlementType / Settlement</td>
+                <td>
+                  Diversité des lieux, capacités, coordonnées, activités et
+                  composition initiale.
+                </td>
+                <td>
+                  Une liste de lieux explicites remplace entièrement la carte
+                  virtuelle.
+                </td>
+              </tr>
+              <tr>
+                <td>Nation / Territory / NationContact</td>
+                <td>
+                  Chronologie politique, propriétaires des lieux, permissions de
+                  contact.
+                </td>
+                <td>Les noms et capitales référencés doivent exister.</td>
+              </tr>
+              <tr>
+                <td>Period / Event</td>
+                <td>
+                  Évolution durable des paramètres ou crise temporaire ciblée.
+                </td>
+                <td>
+                  Une période change le socle ; un événement multiplie les
+                  risques pendant son intervalle.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>La carte virtuelle</h3>
+        <p>
+          <code>virtual_map()</code> répartit exactement le nombre demandé de
+          lieux entre les profils, selon les minimums réservés puis les
+          proportions et les plus grands restes. Les profils sont mélangés avec
+          une graine. Les positions sont tirées dans un espace continu :
+          dispersion uniforme ou groupes autour de centres. La grille reste une
+          option de comparaison.
+        </p>
+        <p>
+          Le navigateur construit des cellules de Voronoï pour rendre cette
+          distribution lisible. Ces cellules
+          <strong>ne définissent pas</strong> les voisinages de simulation : le
+          moteur utilise les distances euclidiennes et un nombre borné de lieux
+          voisins.
+        </p>
+        <p>
+          En mode <code>scale</code>, les capacités sont multipliées par
+          <code
+            >max(1, 1,5 × max(population initiale, plafond) / somme des
+            capacités)</code
+          >. En mode <code>fixed</code>, les capacités fournies sont gardées. La
+          capacité est un support démographique souple, pas un nombre de
+          logements strict.
+        </p>
+        <p class="note">
+          Réduire la carte virtuelle peut supprimer l’identifiant d’une
+          capitale. Le formulaire remet ces capitales en placement automatique
+          déterministe. Un JSON importé avec une capitale inexistante reste
+          refusé par la validation.
+        </p>
+      </section>
+
+      <section id="fondateurs">
+        <div class="eyebrow">04 / Conditions initiales</div>
+        <h2>La simulation commence avec des adultes et des enfants</h2>
+        <ol>
+          <li>
+            Allouer les identifiants denses des fondateurs et choisir leur lieu
+            selon les poids initiaux. Pour les lieux virtuels, ces poids
+            tiennent compte de la capacité.
+          </li>
+          <li>
+            Tirer le peuple globalement ou selon les poids spécifiques du lieu,
+            puis le sexe.
+          </li>
+          <li>
+            Tirer l’âge dans une distribution de survivants construite à partir
+            de la mortalité du peuple et du sexe. La naissance devient
+            <code>année initiale − âge</code>.
+          </li>
+          <li>
+            Attribuer famille fondatrice, statut social et activité compatible
+            avec le lieu. Assigner les traits reproductifs permanents.
+          </li>
+          <li>
+            Former des unions initiales entre adultes éligibles et enregistrer
+            leurs éventuels changements de résidence.
+          </li>
+          <li>Créer le recensement de départ.</li>
+        </ol>
+        <p>
+          Chaque fondateur commence une lignée avec des parents inconnus
+          (<code>−1</code>). Les enfants fondateurs ne sont pas reliés
+          artificiellement à des adultes fondateurs. Une union initiale est
+          observée à la date de départ ; sa date historique réelle antérieure
+          n’est pas reconstruite.
+        </p>
+        <p class="note">
+          La naissance estimée d’un fondateur peut précéder le début de
+          simulation. Son lieu initial est connu, mais ses migrations et liens
+          familiaux antérieurs ne le sont pas. Cette frontière est importante
+          pour interpréter les arbres.
+        </p>
+      </section>
+
+      <section id="annee">
+        <div class="eyebrow">05 / Ordre des opérations</div>
+        <h2>Une année, dans l’ordre exact du moteur</h2>
+        <p>
+          La première année calculée est <code>start_year + 1</code>. L’ordre
+          ci-dessous influe directement sur les histoires produites.
+        </p>
+        <svg
+          class="diagram"
+          viewBox="0 0 900 205"
+          role="img"
+          aria-label="Boucle annuelle : périodes, naissances, décès, divorces, unions, migrations, recensement"
+        >
+          <g font-size="13" text-anchor="middle">
+            <rect x="12" y="45" width="112" height="75" rx="8" />
+            <text x="68" y="77">1 · Périodes</text>
+            <text x="68" y="99">paramètres</text>
+            <rect x="140" y="45" width="112" height="75" rx="8" />
+            <text x="196" y="87">2 · Naissances</text>
+            <rect x="268" y="45" width="112" height="75" rx="8" />
+            <text x="324" y="77">3 · Décès</text>
+            <text x="324" y="99">+ plafond</text>
+            <rect x="396" y="45" width="112" height="75" rx="8" />
+            <text x="452" y="87">4 · Divorces</text>
+            <rect x="524" y="45" width="112" height="75" rx="8" />
+            <text x="580" y="77">5 · Unions</text>
+            <text x="580" y="99">remariages</text>
+            <rect x="652" y="45" width="112" height="75" rx="8" />
+            <text x="708" y="87">6 · Migrations</text>
+            <rect
+              class="accent"
+              x="780"
+              y="45"
+              width="108"
+              height="75"
+              rx="8"
+            />
+            <text x="834" y="77">7 · Bilan</text>
+            <text x="834" y="99">progression</text>
+          </g>
+          <path
+            class="arrow"
+            d="M124 82H140M252 82H268M380 82H396M508 82H524M636 82H652M764 82H780"
+          />
+          <path class="arrow" d="M834 120V165H68V120" />
+          <text x="330" y="187" font-size="13">
+            Année suivante ; arrêt après l’horizon demandé ou annulation.
+          </text>
+        </svg>
+        <div class="steps" aria-label="Détails des étapes">
+          <button data-step="0" aria-pressed="true">1 · Périodes</button
+          ><button data-step="1" aria-pressed="false">2 · Naissances</button
+          ><button data-step="2" aria-pressed="false">3 · Décès</button
+          ><button data-step="3" aria-pressed="false">4 · Divorces</button
+          ><button data-step="4" aria-pressed="false">5 · Unions</button
+          ><button data-step="5" aria-pressed="false">6 · Migrations</button
+          ><button data-step="6" aria-pressed="false">7 · Bilan</button>
+        </div>
+        <div id="stepDetail" aria-live="polite">
+          <strong>1 · Actualiser les paramètres</strong>
+          <p>
+            Appliquer les périodes déjà commencées et les substitutions propres
+            aux peuples. Les événements actifs sont ensuite consultés par chaque
+            processus.
+          </p>
+        </div>
+        <div class="note good">
+          <strong>Conséquences concrètes.</strong> Une nouvelle union peut avoir
+          son premier enfant l’année suivante. Un enfant peut naître avant le
+          décès ou le divorce de ses parents dans la même année. Un nouveau-né
+          peut mourir cette année-là. Les ménages migrent après les naissances,
+          décès et unions. Deux événements datés de la même année n’ont aucune
+          précision au mois ou au jour.
+        </div>
+      </section>
+
+      <section id="regles">
+        <div class="eyebrow">06 / Mécanismes</div>
+        <h2>Comment les décisions sont tirées</h2>
+        <h3>Naissances : éligibilité, probabilité, héritage</h3>
+        <p>
+          Une candidate doit être vivante, en union, dans la fenêtre
+          reproductive de son peuple et avoir respecté l’espacement des
+          naissances. Si elle <strong>ou son partenaire</strong> porte le trait
+          infertile ou sans enfant, elle est exclue avant la régulation. Une
+          mère éligible produit au maximum un enfant cette année.
+        </p>
+        <div class="formula">
+          qâge = fertility_peak × exp(−0,5 × ((âge − fertility_peak_age) /
+          fertility_width)²)<br />pression = min(1, capacité effective du lieu /
+          population locale)<br />q = 1 − (1 − qâge)^(fertilité événement ×
+          fertilité croisement × pression)<br />Naissance si uniforme(0, 1) &lt;
+          q éventuellement augmenté par la régulation.
+        </div>
+        <p>
+          La capacité effective inclut sa croissance annuelle et les événements.
+          Le père est le partenaire actuel : père biologique et père enregistré
+          coïncident. Le lieu de naissance est la résidence courante de la mère.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Attribut du nouveau-né</th>
+                <th>Transmission actuelle</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Peuple</td>
+                <td>
+                  Celui de la mère par défaut ; distribution d’enfants de la
+                  règle de croisement si elle existe.
+                </td>
+              </tr>
+              <tr>
+                <td>Sexe</td>
+                <td>
+                  Tirage selon la probabilité de naissance masculine du peuple
+                  de l’enfant.
+                </td>
+              </tr>
+              <tr>
+                <td>Famille</td>
+                <td>
+                  Identifiant de famille hérité du père ; ce regroupement
+                  patrilinéaire est distinct de l’ascendance complète.
+                </td>
+              </tr>
+              <tr>
+                <td>Statut</td>
+                <td>
+                  Statut du père ; possibilité de déplacement d’un niveau, borné
+                  aux niveaux définis.
+                </td>
+              </tr>
+              <tr>
+                <td>Activité</td>
+                <td>
+                  Héritage de celle du père s’il est autorisé dans le lieu ;
+                  sinon tirage local.
+                </td>
+              </tr>
+              <tr>
+                <td>Traits reproductifs</td>
+                <td>
+                  Tirage déterministe propre à l’enfant, avec la configuration
+                  biologique effective à sa naissance.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <details>
+          <summary>Infécondité et choix sans enfant</summary>
+          <p>
+            Les deux traits sont permanents, distincts et peuvent se cumuler.
+            Ils utilisent deux canaux pseudo-aléatoires indépendants. Les
+            proportions de base sont 6 % d’infertilité féminine, 4 % masculine
+            et 3 % de personnes choisissant de ne pas avoir d’enfant ; elles
+            sont configurables.
+          </p>
+          <p>
+            Un octet de drapeaux est présent pendant le calcul. Après
+            finalisation, les traits sont retrouvés depuis la graine, l’ID, le
+            sexe, le peuple et les paramètres à la naissance. La version de
+            cette reconstruction est enregistrée ; un ancien monde ne doit pas
+            recevoir des traits inventés.
+          </p>
+          <p>
+            Une personne fertile peut aussi rester sans enfant faute d’union,
+            d’espacement disponible, de chance au tirage, ou parce que son
+            partenaire n’est pas reproducteur.
+          </p>
+        </details>
+        <h3>Décès : un risque annuel, pas une date de mort prédéfinie</h3>
+        <div class="formula">
+          qbase(âge) ≈ adult_mortality + aging_coefficient × exp(aging_exponent
+          × âge)<br />Remplacements : infant_mortality à 0 an ; child_mortality
+          dans la tranche enfant.<br />qévénement = 1 − (1 − qbase)^(facteur de
+          mortalité)<br />qfinal = 1 − (1 − qévénement) × (1 − mortalité
+          supplémentaire)
+        </div>
+        <p>
+          Les risques sont bornés entre 0 et 1, avec facteur de mortalité
+          masculine et âge maximal propre au peuple. Atteindre cet âge maximal
+          force le décès. Une naissance peut déclencher un décès maternel dans
+          l’étape de décès. Le plafond peut ajouter des décès ensuite.
+        </p>
+        <p>
+          Le décès enregistre année et lieu, clôt l’union active et retire
+          l’identifiant de la liste des vivants. La personne et ses relations
+          historiques restent dans les tableaux.
+        </p>
+        <h3>Unions, divorce, remariage</h3>
+        <p>
+          Les hommes et femmes adultes disponibles sont regroupés par lieu et
+          peuple. Les femmes participantes sont mélangées ; pour chacune, le
+          moteur essaie un nombre borné de candidats. Il tient compte de la
+          proximité, de la taille du groupe disponible, de l’affinité entre
+          peuples, de l’écart d’âge, du statut et de la parenté.
+        </p>
+        <div class="formula">
+          poids du groupe candidat ∝ proximité × √(hommes disponibles) ×
+          affinité de croisement<br />proximité = exp(−distance /
+          distance_scale) × poids local × contact politique<br />acceptation du
+          statut = (1 − status_affinity)^|écart de statut|
+        </div>
+        <p>
+          Un ancêtre commun dans la profondeur de contrôle interdit le couple :
+          3 générations par défaut, configurable jusqu’à 6. Le contrôle n’est
+          donc pas une exclusion de toute parenté dans l’histoire entière.
+        </p>
+        <p>
+          Chaque personne a au plus un partenaire courant. L’union produit un
+          épisode avec début, lieu, fin et cause de fin. Le mode de résidence
+          choisit le lieu masculin, féminin ou l’un des deux. Divorce et veuvage
+          libèrent les partenaires après un délai configurable de remariage. Le
+          divorce ne provoque pas automatiquement un déménagement.
+        </p>
+        <h3>Migrations : déplacements de ménages</h3>
+        <p>
+          Le tirage s’effectue sur des responsables de ménage : un représentant
+          par couple et les adultes non unis. Une destination est choisie dans
+          un voisinage borné, avec distance, permission politique et attraction
+          <code>capacité × effet événement / (population locale + 1)</code>. Les
+          frontières fermées éliminent la destination.
+        </p>
+        <p>
+          Partenaire et enfants dépendants suivent. Le rattachement d’un enfant
+          privilégie la mère vivante co-résidente, puis le père co-résident. Les
+          enfants sans adulte disponible ne reçoivent pas une adoption
+          automatique. Une activité incompatible avec le nouveau lieu est
+          remplacée.
+        </p>
+        <p class="note">
+          Le compteur de migrations compte les
+          <strong>personnes déplacées</strong>, y compris les enfants et les
+          déplacements liés au mariage. Il ne mesure ni les ménages migrants ni
+          les personnes distinctes ayant migré dans toute la période.
+        </p>
+      </section>
+
+      <section id="politique">
+        <div class="eyebrow">07 / L’histoire du monde</div>
+        <h2>Les lieux portent la politique ; les personnes y résident</h2>
+        <p>
+          <code>PoliticalTimeline</code> calcule quels pays sont actifs à une
+          année. En mode <code>nearest_capital</code>, le propriétaire naturel
+          d’un lieu est le pays dont la capitale active est la plus proche. En
+          mode <code>explicit</code>, seuls les territoires déclarés attribuent
+          des propriétaires. Les territoires explicites peuvent remplacer cette
+          attribution. Les capitales automatiques sont choisies de façon
+          déterministe.
+        </p>
+        <p>
+          Créer ou dissoudre un pays change la carte des propriétaires et des
+          contacts. Cela ne déplace pas physiquement les habitants. Une personne
+          n’a pas encore de nationalité permanente : le pays de sa résidence à
+          une date se déduit de la chronologie des lieux.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Temporalité</th>
+                <th>Convention exacte</th>
+                <th>Effet</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Pays</td>
+                <td><code>founded ≤ année &lt; dissolved</code></td>
+                <td>
+                  Actif de sa fondation jusqu’à l’année précédant sa
+                  dissolution.
+                </td>
+              </tr>
+              <tr>
+                <td>Territoires / contacts</td>
+                <td>Début inclus, fin exclue.</td>
+                <td>Attribution ou contact pendant l’intervalle politique.</td>
+              </tr>
+              <tr>
+                <td>Événements démographiques</td>
+                <td><code>start ≤ année ≤ end</code></td>
+                <td>Les deux années extrêmes participent à la crise.</td>
+              </tr>
+              <tr>
+                <td>Périodes</td>
+                <td>
+                  Toutes les périodes commencées sont cumulées dans l’ordre.
+                </td>
+                <td>
+                  Leurs réglages persistent ; les substitutions explicites d’un
+                  peuple sont appliquées après.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Contacts et crises</h3>
+        <p>
+          Les contacts nommés entre deux nations sont symétriques. Par défaut,
+          sans règle de contact, deux pays différents ont leurs migrations et
+          unions fermées (les facteurs étrangers globaux peuvent modifier ce
+          défaut). À l’intérieur d’un pays, les facteurs valent 1. Un lieu sans
+          propriétaire a par défaut des contacts ouverts.
+        </p>
+        <p>
+          Une union internationale nécessite aussi une permission de migration
+          positive, car le couple doit partager un lieu. Autoriser seulement le
+          facteur de mariage ne suffit donc pas.
+        </p>
+        <p>
+          Les événements peuvent filtrer les lieux, peuples, sexes et âges.
+          Plusieurs événements multiplient les facteurs de mortalité, fertilité
+          et migration. Les mortalités supplémentaires se combinent par
+          <code>1 − produit(1 − risque)</code>. Les effets de capacité sont au
+          niveau des lieux et ne suivent pas les filtres d’âge ou de sexe.
+        </p>
+      </section>
+
+      <section id="regulation">
+        <div class="eyebrow">08 / Contrôle démographique</div>
+        <h2>Le départ est un plancher à retrouver ; la cible est un plafond</h2>
+        <p>
+          Le régulateur est actif avec <code>target_mode = bounded</code> et une
+          population cible. Il ne fait aucun essai préalable et ne rejoue pas la
+          simulation. En mode <code>report</code>, la cible sert à comparer le
+          résultat sans activer ce contrôle.
+        </p>
+        <svg
+          class="diagram"
+          viewBox="0 0 900 265"
+          role="img"
+          aria-label="Régulation : crise préservée, augmentation de natalité pour récupération, mortalité supplémentaire au plafond"
+        >
+          <rect x="30" y="30" width="255" height="150" rx="9" />
+          <text x="50" y="65" font-weight="700">Avant les naissances</text>
+          <text x="50" y="95" font-size="14">
+            Population sous la zone de reprise ?
+          </text>
+          <text x="50" y="122" font-size="14">
+            Aucune crise dommageable active ?
+          </text>
+          <text x="50" y="152" font-size="14">
+            → augmenter q des parents éligibles
+          </text>
+          <rect class="accent" x="325" y="30" width="250" height="150" rx="9" />
+          <text x="345" y="65" font-weight="700">Tirages biologiques</text>
+          <text x="345" y="95" font-size="14">
+            Naissances puis décès naturels
+          </text>
+          <text x="345" y="122" font-size="14">
+            Les événements gardent leur effet
+          </text>
+          <text x="345" y="152" font-size="14">Aucun décès annulé</text>
+          <rect x="615" y="30" width="255" height="150" rx="9" />
+          <text x="635" y="65" font-weight="700">Après les décès</text>
+          <text x="635" y="95" font-size="14">
+            Survivants au-dessus du plafond ?
+          </text>
+          <text x="635" y="122" font-size="14">
+            → ajouter exactement l’excédent
+          </text>
+          <text x="635" y="152" font-size="14">
+            de décès, pondérés par le risque
+          </text>
+          <path class="arrow" d="M285 105H325M575 105H615" />
+          <text x="50" y="222" font-size="14">
+            Le plancher peut être franchi pendant une crise ; le retour dépend
+            des parents disponibles.
+          </text>
+          <text x="50" y="246" font-size="14">
+            Le plafond borne les survivants de fin d’année ; les naissances
+            peuvent le dépasser temporairement.
+          </text>
+        </svg>
+        <div class="formula">
+          zone de reprise = min(plafond, plancher × (1 + buffer))<br />naissances
+          attendues nécessaires ≈ [décès attendus + (zone − population) / délai
+          de réponse] / survie néonatale
+        </div>
+        <p>
+          La probabilité augmente seulement là où elle est déjà positive. Elle
+          reste sous une combinaison de plafond de probabilité et de
+          multiplicateur maximal. La biologie, l’espacement, l’infécondité et le
+          choix sans enfant restent bloquants. Le retour au plancher n’est pas
+          garanti en l’absence de parents éligibles.
+        </p>
+        <p>
+          Tout événement actif qui accroît la mortalité ou réduit
+          fertilité/capacité suspend la surcompensation de natalité. Ce test est
+          actuellement <strong>global</strong> : même une crise localisée
+          suspend cette aide pour toute la population.
+        </p>
+        <p class="note">
+          Le plafond est une contrainte de worldbuilding imposée par des décès
+          supplémentaires. Il ne résulte pas automatiquement d’une économie ou
+          d’une écologie simulée. Atteindre 50 millions à l’horizon n’est pas
+          garanti : 50 millions est le maximum autorisé, pas une trajectoire
+          prescrite.
+        </p>
+      </section>
+
+      <section id="donnees">
+        <div class="eyebrow">09 / Stockage</div>
+        <h2>Des colonnes numériques et des événements append-only</h2>
+        <p>
+          <code>PersonColumns</code> utilise une structure en colonnes : un
+          tableau contigu NumPy par propriété. Une identité est l’indice dans
+          ces tableaux. On évite un objet Python et un dictionnaire par
+          habitant.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Données personnelles conservées</th>
+                <th>Type</th>
+                <th>Octets / personne</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Sexe, statut</td>
+                <td>2 × uint8</td>
+                <td>2</td>
+              </tr>
+              <tr>
+                <td>Naissance, décès</td>
+                <td>2 × int32</td>
+                <td>8</td>
+              </tr>
+              <tr>
+                <td>Père, mère</td>
+                <td>2 × int32</td>
+                <td>8</td>
+              </tr>
+              <tr>
+                <td>Lieu de naissance, résidence finale, lieu de décès</td>
+                <td>3 × int32</td>
+                <td>12</td>
+              </tr>
+              <tr>
+                <td>Famille</td>
+                <td>int32</td>
+                <td>4</td>
+              </tr>
+              <tr>
+                <td>Activité, peuple</td>
+                <td>2 × int16</td>
+                <td>4</td>
+              </tr>
+              <tr>
+                <td><strong>Total conservé</strong></td>
+                <td>ID implicite ; aucun nom obligatoire</td>
+                <td><strong>38</strong></td>
+              </tr>
+              <tr>
+                <td>État temporaire du calcul</td>
+                <td>
+                  Partenaire, union, dernière naissance, éligibilité, index de
+                  lieu + drapeaux reproductifs
+                </td>
+                <td>+21, soit 59 pendant le calcul</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Les parents ou lieux inconnus utilisent <code>−1</code>. Le décès
+          inconnu utilise un entier sentinelle spécifique ; l’API convertit ces
+          valeurs en <code>null</code>. Les champs persistants de dates ont une
+          précision annuelle.
+        </p>
+        <div class="grid">
+          <div class="tile">
+            <strong>Union · 25 octets</strong>ID, homme, femme, début, lieu, fin
+            : 6 entiers de 4 octets. Cause de fin : 1 octet. Plusieurs épisodes
+            sont possibles par personne.
+          </div>
+          <div class="tile">
+            <strong>Migration · 17 octets</strong>Personne, année, origine,
+            destination : 4 entiers de 4 octets. Motif : 1 octet. Un ménage
+            produit un événement par personne déplacée.
+          </div>
+        </div>
+        <p class="note">
+          50 millions de fiches finales représentent
+          <strong>1,90 Go décimaux</strong> pour les seules colonnes conservées.
+          Mais il faut aussi garder les générations mortes : le nombre de fiches
+          est <code>fondateurs + toutes les naissances</code>, pas la seule
+          population vivante finale. Le pic RAM inclut 59 octets par fiche
+          pendant le calcul, la marge d’allocation, les index, événements et
+          tableaux de travail.
+        </p>
+        <h3>Historique décennal et dates exactes</h3>
+        <p>
+          Le moteur produit un petit bilan global par année pendant le calcul.
+          Il archive les distributions spatiales et les recensements détaillés
+          au départ, à l’intervalle choisi — 10 ans par défaut — et à la fin.
+          Les compteurs d’événements y sont cumulés depuis le recensement
+          précédent ; <code>span</code> permet aux graphiques de calculer une
+          moyenne annuelle.
+        </p>
+        <p>
+          Les naissances/décès et migrations individuelles gardent leur année.
+          La carte globale est disponible aux années de recensement. Une
+          résidence individuelle peut être reconstruite à une année
+          intermédiaire via les déplacements datés.
+        </p>
+        <h3>RAM, SQLite et export compact</h3>
+        <p>
+          Le studio calcule et explore avec <code>MemoryArchive</code>, sans
+          écriture d’archive utilisateur. La commande explicite
+          <code>generate --output …</code> permet encore une sauvegarde SQLite.
+          <code>compact.py</code> exporte séparément une archive SQLite vers un
+          dossier de fichiers NumPy et un manifeste, typiquement autour de 21
+          octets par fiche selon les plages de dates et identifiants.
+        </p>
+        <p>
+          Ce format compact a son propre lecteur avec accès individuel et
+          ascendance. Il n’est pas encore un adaptateur complet pour toutes les
+          vues du studio. Les dates relatives et les tailles de champs sont
+          décrites dans son manifeste.
+        </p>
+      </section>
+
+      <section id="exploration">
+        <div class="eyebrow">10 / Lecture</div>
+        <h2>Comment la carte, l’atlas et l’arbre retrouvent les données</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Vue / API</th>
+                <th>Ce qu’elle lit</th>
+                <th>Précision et limites</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>/world</code>, <code>/distributions</code></td>
+                <td>Résumé et recensements sauvegardés.</td>
+                <td>
+                  Valeurs exactes aux dates de recensement ; événements cumulés
+                  sur leur intervalle.
+                </td>
+              </tr>
+              <tr>
+                <td><code>/map?year=…</code></td>
+                <td>
+                  Population des lieux à un recensement et propriétaires
+                  politiques.
+                </td>
+                <td>
+                  Une année sans recensement n’a pas de carte démographique
+                  complète enregistrée.
+                </td>
+              </tr>
+              <tr>
+                <td><code>/resident-atlas?place=…</code></td>
+                <td>
+                  Index des vivants dans leur lieu au dernier recensement.
+                </td>
+                <td>
+                  Comptages exacts par âge / peuple / sexe. Marqueurs limités :
+                  1 200 par défaut, 2 000 maximum.
+                </td>
+              </tr>
+              <tr>
+                <td><code>/person?id=…</code></td>
+                <td>
+                  Fiche directe, unions, enfants, migrations, traits
+                  reconstruits.
+                </td>
+                <td>
+                  La fiche contient l’état social et l’activité finaux ; leurs
+                  changements complets ne sont pas archivés.
+                </td>
+              </tr>
+              <tr>
+                <td><code>/lineage?id=…&amp;depth=…</code></td>
+                <td>Parcours en largeur des parents ou des enfants.</td>
+                <td>
+                  Ancêtres partagés dédoublonnés ; profondeur jusqu’à 12. UI : 1
+                  000 apparentés ; API : plafond de 5 000.
+                </td>
+              </tr>
+              <tr>
+                <td><code>/residence?id=…&amp;year=…</code></td>
+                <td>
+                  Lieu de naissance puis événements de migration jusqu’à la
+                  date.
+                </td>
+                <td>
+                  Pas de résidence antérieure connue pour les fondateurs ;
+                  aucune résidence après décès.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          L’atlas répartit les groupes par âge, sexe et peuple. Le zoom explore
+          des cohortes plus fines. Quand un groupe contient trop de personnes,
+          les IDs affichés sont choisis à intervalles réguliers dans la liste :
+          un échantillon déterministe d’affichage, sans garantie de
+          représentativité statistique. La recherche par ID permet d’ouvrir
+          n’importe quelle fiche réelle.
+        </p>
+        <p>
+          L’arbre utilise des rangées générationnelles, plusieurs passes de
+          placement pour rapprocher les branches, puis un écart minimal entre
+          cartes. Son zoom et son déplacement utilisent le
+          <code>viewBox</code> SVG. Le nombre demandé est une profondeur
+          maximale ; fondateurs, branches courtes et limite de personnes peuvent
+          réduire ce qui est visible. Une génération finale peut être partielle
+          en cas de troncature.
+        </p>
+        <p>
+          Les requêtes portent l’identifiant de l’archive. Des compteurs de
+          requêtes empêchent une réponse tardive de remplacer la sélection
+          courante. Le moteur ne relance pas une génération quand on change la
+          profondeur de l’arbre.
+        </p>
+      </section>
+
+      <section id="performance">
+        <div class="eyebrow">11 / Calcul</div>
+        <h2>Ce qui est compilé, vectorisé et déterministe</h2>
+        <p>
+          Les tableaux et tirages groupés utilisent NumPy. Numba compile le
+          filtrage reproductif, la sélection des ménages, les destinations, le
+          regroupement des candidats, le contrôle de parenté et les
+          appariements. Le recensement possède un noyau parallèle utilisé pour
+          les grandes populations vivantes avec plusieurs threads configurés.
+        </p>
+        <p>
+          Le matching conserve une séquence de décisions : accepter un
+          partenaire le retire du marché. Il reste séquentiel dans le noyau
+          compilé. La boucle annuelle est également séquentielle, car une année
+          dépend de la précédente. Aucun backend GPU ou C++ n’est actuellement
+          présent.
+        </p>
+        <h3>Les grands postes de coût</h3>
+        <ul>
+          <li>
+            Les traitements démographiques parcourent les vivants chaque année :
+            le volume pertinent est la somme des populations annuelles.
+          </li>
+          <li>
+            Les unions coûtent les tentatives de candidats et les parcours
+            d’ancêtres bornés. Le nombre de tentatives est configurable.
+          </li>
+          <li>
+            Le graphe spatial conserve des voisins bornés, construit via des
+            cases spatiales. Le moteur ne stocke pas une matrice complète de
+            distances entre tous les lieux.
+          </li>
+          <li>
+            L’attribution politique peut créer une matrice temporaire lieux ×
+            capitales actives.
+          </li>
+          <li>
+            Les index inverses d’enfants, unions et migrations sont construits
+            paresseusement par tri. La première consultation peut coûter un tri
+            historique, puis les recherches utilisent l’index.
+          </li>
+          <li>
+            La finalisation réduit les colonnes à leur taille utile et construit
+            l’index des résidents. Elle participe au temps et au pic mémoire.
+          </li>
+        </ul>
+        <h3>Portée de la graine</h3>
+        <p>
+          Les tirages naissances, décès, divorces, unions et migrations
+          utilisent des flux séparés dérivés de la graine et de l’année. Les
+          extensions peuvent demander leur propre flux avec
+          <code>engine.stream(nom, process)</code>. La carte et les traits
+          reproductifs ont aussi des canaux propres.
+        </p>
+        <p>
+          La reproductibilité suppose la même configuration, le même backend et
+          une version identique des algorithmes. Les chemins
+          <code>compiled</code> et <code>reference</code> ne promettent pas les
+          mêmes individus. Ajouter une règle qui modifie les naissances change
+          les IDs suivants et l’histoire future, même avec des flux aléatoires
+          séparés.
+        </p>
+        <p class="note">
+          Le scénario « 1 million → maximum 50 millions sur 1 000 ans » est un
+          objectif de dimensionnement. Aucun temps garanti pour ce scénario
+          complet n’est établi ici. Le compteur <code>archive_bytes</code> ne
+          représente pas le pic RAM du processus : il mesure essentiellement les
+          colonnes personnelles et les tables d’événements.
+        </p>
+      </section>
+
+      <section id="code">
+        <div class="eyebrow">12 / Architecture du code</div>
+        <h2>Les fichiers à ouvrir, dans l’ordre utile</h2>
+        <p>
+          Les chemins ci-dessous sont relatifs à la racine du dépôt. Commencer
+          par <code>config.py</code>, <code>Engine.run()</code>, puis le
+          processus que tu veux modifier.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fichier sous src/genealogy/</th>
+                <th>Entrée principale</th>
+                <th>Responsabilité</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><a href="../src/genealogy/config.py">config.py</a></td>
+                <td>Scenario, virtual_map</td>
+                <td>
+                  Schéma, defaults, validation, carte virtuelle et profils de
+                  lieux.
+                </td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/engine.py">engine.py</a></td>
+                <td>generate, Engine.run</td>
+                <td>
+                  Initialisation, boucle annuelle, processus, statistiques et
+                  orchestration.
+                </td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/kernels.py">kernels.py</a></td>
+                <td>match_pairs, fertile_ids, census_counts_parallel</td>
+                <td>
+                  Noyaux numériques compilés, regroupements, parenté, ménages.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <a href="../src/genealogy/regulation.py">regulation.py</a>
+                </td>
+                <td>PopulationRegulator</td>
+                <td>
+                  Reprise de natalité et mortalité de plafond en un seul run.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <a href="../src/genealogy/reproduction.py">reproduction.py</a>
+                </td>
+                <td>ReproductiveTraits, mortality_summary</td>
+                <td>
+                  Traits reproductifs reconstruisibles et indicateurs de décès.
+                </td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/politics.py">politics.py</a></td>
+                <td>PoliticalTimeline</td>
+                <td>
+                  Nations actives, territoires et matrices de contacts datés.
+                </td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/schema.py">schema.py</a></td>
+                <td>PersonColumns</td>
+                <td>
+                  Types, sentinelles, allocation des colonnes personnelles.
+                </td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/events.py">events.py</a></td>
+                <td>EventBuffer</td>
+                <td>Écriture groupée des épisodes d’union et déplacements.</td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/memory.py">memory.py</a></td>
+                <td>MemoryArchive</td>
+                <td>Archive RAM, finalisation, index et API de lecture.</td>
+              </tr>
+              <tr>
+                <td>
+                  <a href="../src/genealogy/inspection.py">inspection.py</a>
+                </td>
+                <td>resident_atlas</td>
+                <td>
+                  Comptage exact des cohortes et échantillon des marqueurs.
+                </td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/rules.py">rules.py</a></td>
+                <td>HazardRule</td>
+                <td>
+                  Contrat d’extension des risques sans objet par personne.
+                </td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/store.py">store.py</a></td>
+                <td>Store, Archive</td>
+                <td>Persistance SQLite optionnelle et lecture compatible.</td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/compact.py">compact.py</a></td>
+                <td>export_compact, CompactArchive</td>
+                <td>Export NumPy compact et lecteur dédié.</td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/studio.py">studio.py</a></td>
+                <td>Studio</td>
+                <td>Catalogue RAM, tâches, verrou et annulation.</td>
+              </tr>
+              <tr>
+                <td><a href="../src/genealogy/server.py">server.py</a></td>
+                <td>make_handler</td>
+                <td>Serveur HTTP local et routes JSON.</td>
+              </tr>
+              <tr>
+                <td>
+                  <a href="../src/genealogy/studio.js">studio.js</a><br /><a
+                    href="../src/genealogy/explorer.html"
+                    >explorer.html</a
+                  >
+                  / <a href="../src/genealogy/studio.css">studio.css</a>
+                </td>
+                <td>drawTree, drawMap, formulaires</td>
+                <td>
+                  Navigation, édition, rendu Canvas/SVG et gestion des réponses
+                  asynchrones.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <a href="../src/genealogy/cli.py">cli.py</a> /
+                  <a href="../src/genealogy/benchmark.py">benchmark.py</a>
+                </td>
+                <td>main</td>
+                <td>
+                  Commandes standalone ; mesure du temps et de la mémoire.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="extension">
+        <div class="eyebrow">13 / Préparer les améliorations</div>
+        <h2>Choisir le bon niveau de modification</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Amélioration envisagée</th>
+                <th>Modules à toucher</th>
+                <th>Conséquence structurante</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Changer les taux, lieux, crises ou contacts</td>
+                <td>Scénario YAML / formulaire / config.py</td>
+                <td>Souvent faisable sans nouvelle colonne personnelle.</td>
+              </tr>
+              <tr>
+                <td>Nouvelle influence sur natalité ou mortalité</td>
+                <td>rules.py + règle Python ; config.py si paramétrable</td>
+                <td>
+                  Traitement vectorisé des risques, avec flux aléatoire isolé.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Mobilité selon routes, relief ou frontières géographiques
+                </td>
+                <td>config.py, engine._neighbors, politics.py, kernels.py</td>
+                <td>
+                  Remplacer la distance simple par un graphe de coûts et des
+                  permissions.
+                </td>
+              </tr>
+              <tr>
+                <td>Nationalité, culture ou religion héritée</td>
+                <td>
+                  schema.py, engine.py, memory.py, store.py, compact.py, UI
+                </td>
+                <td>
+                  Attribut personnel distinct du propriétaire du lieu ; règle de
+                  transmission et format versionné.
+                </td>
+              </tr>
+              <tr>
+                <td>Adultère / père social différent</td>
+                <td>engine._births, kernels.py, schema.py, archives, UI</td>
+                <td>
+                  Séparer père biologique, union et parent social. Élargir
+                  matching, contrôle de parenté et arbre.
+                </td>
+              </tr>
+              <tr>
+                <td>Adoption / foyers complexes</td>
+                <td>Modèle des relations, _dependents, archives, arbre</td>
+                <td>
+                  Relations datées distinctes des liens biologiques ; garde et
+                  résidence explicites.
+                </td>
+              </tr>
+              <tr>
+                <td>Mobilité sociale / historique des métiers</td>
+                <td>Processus annuel + table d’événements + lecture</td>
+                <td>
+                  Conserver les changements datés au lieu du seul état final.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Génération massive par cohortes + individus à la demande
+                </td>
+                <td>Nouveau backend + contrat d’archive</td>
+                <td>
+                  Changement de modèle majeur : garantir parenté, unions et
+                  migrations cohérentes entre requêtes.
+                </td>
+              </tr>
+              <tr>
+                <td>Améliorer uniquement la visualisation</td>
+                <td>
+                  studio.js, studio.css, explorer.html ; inspection.py si
+                  agrégats nouveaux
+                </td>
+                <td>
+                  Garder les règles de simulation et les données historiques
+                  intactes.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>
+          Exemple d’extension : modifier un risque sans changer le stockage
+        </h3>
+        <p>
+          Une règle Python reçoit les IDs concernés et des tableaux de facteurs.
+          Les tableaux individuels sont alignés sur <code>ids</code> ;
+          <code>capacity</code> est aligné sur les lieux. Elle modifie les
+          tableaux en place en conservant longueur, valeurs finies et non
+          négatives.
+        </p>
+        <pre><code>from src.genealogy.config import Scenario
+from src.genealogy.engine import generate
+
+class FertilityModifier:
+    def apply(self, engine, process, ids, hazards):
+        if process == "births":
+            # Multiplie le facteur de risque utilisé par le moteur.
+            hazards["fertility"] *= 0.9
+
+scenario = Scenario(seed=42, initial_population=3000,
+                    years=60, virtual_settlements=50)
+world = generate(scenario, None, rules=[FertilityModifier()])</code></pre>
+        <p class="small">
+          Ce branchement se fait depuis Python. L’éditeur JSON du studio ne
+          charge pas automatiquement des plugins de règles. Une règle de
+          fertilité ne réintègre pas les personnes exclues pour infécondité.
+          Pour une règle aléatoire, utiliser un nom unique avec
+          <code>engine.stream("ma_regle", process)</code>.
+        </p>
+        <h3>Vérifications ciblées avant de changer le modèle</h3>
+        <p>
+          Pour une nouvelle mécanique, un petit scénario à graine fixe suffit à
+          vérifier ses invariants : parents nés avant leurs enfants, aucune
+          union simultanée interdite, séparation correcte des dates politiques
+          et démographiques, cohérence des lieux après migration, et
+          reproductibilité. Un benchmark représentatif sert ensuite à mesurer le
+          coût. Pour un changement visuel, vérifier le navigateur et les
+          requêtes concernés.
+        </p>
+      </section>
+
+      <section id="limites">
+        <div class="eyebrow">14 / Interprétation</div>
+        <h2>Les limites actuelles à garder en tête</h2>
+        <div class="grid">
+          <div class="tile">
+            <strong>Relations</strong>Divorce, veuvage et remariage sont
+            présents. Adultère, adoption, polygamie et unions de même sexe n’ont
+            pas de mécanique implémentée. Les parents biologiques sont le couple
+            courant.
+          </div>
+          <div class="tile">
+            <strong>Biologie</strong>Traits reproductifs fixes ; aucun état de
+            maladie individuel transmis, infertilité acquise ou changement
+            d’avis. Les naissances multiples ne sont pas modélisées.
+          </div>
+          <div class="tile">
+            <strong>Géographie</strong>Distances entre sites, capacités et
+            contacts politiques. Pas encore d’effet des routes, rivières,
+            relief, ressources ou frontières polygonales sur les trajets.
+          </div>
+          <div class="tile">
+            <strong>Histoire sociale</strong>Statut et activité héritables mais
+            pas de carrière personnelle enregistrée. Aucune nationalité, culture
+            ou religion permanente indépendante du lieu.
+          </div>
+        </div>
+        <h3>Comprendre les indicateurs de mortalité</h3>
+        <p>
+          La moyenne et la médiane des âges au décès décrivent les décès
+          observés, y compris ceux des fondateurs. La part de décès avant 15 ans
+          divise les morts de moins de 15 ans par tous les décès ; ce n’est pas
+          le risque de mourir pour un enfant né.
+        </p>
+        <p>
+          Le risque de décès avant 15 ans utilise séparément les cohortes nées
+          dans la simulation assez tôt pour avoir un suivi complet jusqu’à cet
+          âge. Les naissances récentes sont exclues du numérateur et du
+          dénominateur, même si certains de ces enfants sont déjà morts. Cette
+          distinction évite un biais de suivi incomplet.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Terme</th>
+                <th>Signification dans ce prototype</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Population</td>
+                <td>Nombre de personnes vivantes à une année donnée.</td>
+              </tr>
+              <tr>
+                <td>Personnes générées</td>
+                <td>Tous les fondateurs et enfants, morts compris.</td>
+              </tr>
+              <tr>
+                <td>Famille</td>
+                <td>
+                  Identifiant patrilinéaire partagé ; ne remplace pas le graphe
+                  des parents.
+                </td>
+              </tr>
+              <tr>
+                <td>Femmes en âge fertile</td>
+                <td>
+                  Indicateur d’âge et de sexe ; il ne soustrait pas les traits
+                  d’infécondité ou sans enfant.
+                </td>
+              </tr>
+              <tr>
+                <td>Peuple / race</td>
+                <td>
+                  Catégorie configurable de poids initiaux et de paramètres
+                  biologiques, notamment fantasy.
+                </td>
+              </tr>
+              <tr>
+                <td>Nation</td>
+                <td>
+                  Entité politique datée propriétaire de lieux ; pas encore un
+                  attribut personnel.
+                </td>
+              </tr>
+              <tr>
+                <td>Génération visible</td>
+                <td>
+                  Distance de parenté maximale atteinte depuis l’individu
+                  choisi, dans la limite des données et du nombre de nœuds.
+                </td>
+              </tr>
+              <tr>
+                <td>Capacité</td>
+                <td>
+                  Facteur de pression sur la natalité et d’attraction migratoire
+                  ; ne bloque pas physiquement le peuplement.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <footer>
+        Guide issu des sources locales du prototype. Les chemins de code restent
+        relatifs à ce fichier. Pour les commandes et scénarios existants :
+        <a href="genealogy.md">documentation d’utilisation</a>. Les mécanismes
+        proposés dans « Où intervenir » sont des pistes de modification ; les
+        autres sections décrivent le fonctionnement présent.
+      </footer>
+    </main>
+    <script>
+      const descriptions = [
+        [
+          "1 · Actualiser les paramètres",
+          "Appliquer les périodes déjà commencées et les substitutions propres aux peuples. Les événements actifs sont ensuite consultés par chaque processus.",
+        ],
+        [
+          "2 · Tirer les naissances",
+          "Filtrer les mères et partenaires éligibles, calculer les probabilités, appliquer la reprise de natalité éventuelle, tirer les enfants et attribuer leur héritage. Les unions créées cette année ne sont pas encore disponibles.",
+        ],
+        [
+          "3 · Tirer les décès",
+          "Inclure les nouveaux-nés, les risques maternels et les événements. Ajouter les décès nécessaires au plafond. Clore les unions des morts et retirer ces IDs des vivants.",
+        ],
+        [
+          "4 · Tirer les divorces",
+          "Un tirage par union active. Clore les épisodes concernés, libérer les deux partenaires et enregistrer leur prochaine année d’éligibilité au remariage.",
+        ],
+        [
+          "5 · Former les unions",
+          "Faire participer les adultes éligibles, chercher des candidats compatibles dans les groupes voisins et contrôler la parenté. Enregistrer les nouvelles unions et déplacements de résidence associés.",
+        ],
+        [
+          "6 · Déplacer les ménages",
+          "Choisir les ménages participants, une destination autorisée, puis déplacer les partenaires et enfants dépendants. Écrire un événement par personne. Actualiser les activités incompatibles.",
+        ],
+        [
+          "7 · Consolider et publier la progression",
+          "Transférer les événements en lots, calculer le bilan annuel et les distributions si un recensement est prévu, enregistrer les métriques de régulation et notifier le studio. L’annulation est vérifiée à ce point.",
+        ],
+      ];
+      document.querySelectorAll("[data-step]").forEach((button) =>
+        button.addEventListener("click", () => {
+          document
+            .querySelectorAll("[data-step]")
+            .forEach((b) =>
+              b.setAttribute("aria-pressed", String(b === button)),
+            );
+          const [title, text] = descriptions[Number(button.dataset.step)];
+          const strong = document.createElement("strong"),
+            p = document.createElement("p");
+          strong.textContent = title;
+          p.textContent = text;
+          document.getElementById("stepDetail").replaceChildren(strong, p);
+        }),
+      );
+      document
+        .getElementById("print")
+        .addEventListener("click", () => window.print());
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries)
+            if (entry.isIntersecting) {
+              document
+                .querySelectorAll("nav a")
+                .forEach((a) =>
+                  a.classList.toggle(
+                    "active",
+                    a.hash === "#" + entry.target.id,
+                  ),
+                );
+            }
+        },
+        { rootMargin: "-10% 0px -65% 0px" },
+      );
+      document
+        .querySelectorAll("section[id]")
+        .forEach((section) => observer.observe(section));
+    </script>
+  </body>
+</html>
