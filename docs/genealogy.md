@@ -761,3 +761,10 @@ réels répartis de manière déterministe dans la sélection. Si celle-ci dépa
 cette limite, l'échantillon de marqueurs est explicitement signalé ; les effectifs
 restent exhaustifs. On peut toujours ouvrir un identifiant exact avec la recherche.
 Aucune pagination n'est présentée, aucune simulation supplémentaire n'est lancée.
+
+
+La réduction du nombre de lieux virtuels conserve les capitales dont l'ID existe
+encore. Les capitales supprimées passent en placement automatique déterministe,
+avec un avis visible dans la configuration. Le champ capitale affiche la plage
+d'IDs autorisée ; une valeur vide signifie automatique. Les cartes explicites et
+le JSON restent validés strictement, sans modifier leurs références silencieusement.

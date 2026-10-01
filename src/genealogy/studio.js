@@ -89,6 +89,7 @@ let submittedJob = null,
   openedJob = null;
 let presets,
   config,
+  mapAdjustmentMessage = "",
   world,
   loadedConfig,
   person = null,
@@ -368,7 +369,33 @@ function renderProfiles() {
     );
     inputCell(row, n.founded, (v) => (n.founded = v));
     inputCell(row, n.dissolved, (v) => (n.dissolved = v), { nullable: true });
-    inputCell(row, n.capital, (v) => (n.capital = v), { nullable: true });
+    inputCell(
+      row,
+      n.capital,
+      (v) => {
+        const valid = config.settlements.length
+          ? config.settlements.some((p) => p.id === v)
+          : Number.isInteger(v) && v >= 0 && v < config.virtual_settlements;
+        if (v !== null && !valid)
+          throw Error(
+            "La capitale de « " +
+              n.name +
+              " » doit être un ID de lieu existant. Videz le champ pour un placement automatique.",
+          );
+        n.capital = v;
+      },
+      { nullable: true, placeholder: "Automatique" },
+    );
+    const capital = row.lastElementChild.querySelector("input");
+    capital.step = "1";
+    capital.min = "0";
+    if (!config.settlements.length)
+      capital.max = config.virtual_settlements - 1;
+    capital.title = config.settlements.length
+      ? "ID d’un lieu de la carte explicite ; vide = automatique"
+      : "ID entre 0 et " +
+        (config.virtual_settlements - 1) +
+        " ; vide = automatique";
     removeCell(row, config.nations, index);
     $("nationProfiles").append(row);
   });
@@ -489,6 +516,7 @@ function renderProfiles() {
 }
 
 function populate(source) {
+  mapAdjustmentMessage = "";
   config = clone(source);
   for (const [id, key] of Object.entries(basics))
     $(id).value = config[key] ?? "";
@@ -545,6 +573,8 @@ $("configJson").oninput = () => setJsonDirty(true);
 $("discardJson").onclick = () => syncPreview();
 function syncPreview() {
   setJsonDirty(false);
+  $("mapAdjustmentNotice").textContent = mapAdjustmentMessage;
+  $("mapAdjustmentNotice").hidden = !mapAdjustmentMessage;
   renderMortalityHint();
   for (const [key, list] of [
     ["places", config.settlement_types],
@@ -617,6 +647,22 @@ for (const [id, key] of Object.entries(basics)) {
     if (id === "generations" || id === "generationYears") {
       config.years = null;
       $("exactYears").value = "";
+    }
+    if (
+      id === "places" &&
+      !config.settlements.length &&
+      $("places").checkValidity()
+    ) {
+      const removed = config.nations.filter(
+        (n) => n.capital !== null && n.capital >= config.virtual_settlements,
+      );
+      for (const nation of removed) nation.capital = null;
+      mapAdjustmentMessage = removed.length
+        ? "Carte redimensionnée : capitale automatique pour " +
+          removed.map((n) => n.name).join(", ") +
+          ". Le placement est déterministe avec la graine. Les capitales encore présentes sont conservées."
+        : "";
+      renderProfiles();
     }
     syncPreview();
   };
