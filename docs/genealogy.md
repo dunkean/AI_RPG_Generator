@@ -679,7 +679,7 @@ ne prouvent pas la performance sur 50 millions / 1 000 ans.
 
 ## Atelier : configuration, monde et individus
 
-Le lanceur `explore_genealogy.cmd` ouvre le serveur sur `http://127.0.0.1:8771`.
+Le lanceur `explore_genealogy.cmd` ouvre le serveur sur `http://127.0.0.1:8772`.
 La configuration se parcourt par sept rubriques compactes : départ/carte, types
 de lieux, démographie, peuples, événements, nations/contacts et JSON. Les activités
 se modifient par nom et poids, avec ajout/suppression de lignes. Les peuples sont
@@ -693,9 +693,8 @@ graphique aux recensements conservés. La lecture automatique, les flèches et
 le curseur parcourent les mêmes recensements, sans interpoler de données annuelles.
 Le panneau de mortalité couvre toute la simulation, pas uniquement la date affichée.
 
-L'onglet Individus conserve la carte, la date et le lieu sélectionnés. Les listes
-pagées de résidents au **dernier recensement** distinguent sexe et peuple. Leurs
-filtres portent explicitement sur les habitants déjà chargés. Les parents, enfants,
+L'onglet Individus conserve la carte, la date et le lieu sélectionnés. L’atlas visuel des résidents au **dernier recensement** distingue sexe et peuple.
+Ses filtres portent sur toute la population du lieu. Les parents, enfants,
 unions, divorces et migrations ouvrent les personnes liées ; une date de chronologie
 synchronise la carte avec le recensement conservé le plus proche. Les flèches de la
 recherche permettent de revenir aux individus consultés. Le lieu de résidence ou
@@ -742,3 +741,23 @@ avant 15 ans parmi les naissances utilise uniquement celles suivies jusqu'au
 cohorte complète donne une valeur inconnue, jamais 0 %. Le calcul agrège les
 colonnes par blocs d'un million et un petit histogramme, sans trier tous les morts.
 Ces moyennes observées ne sont pas une estimation d'espérance de vie.
+
+
+### Atlas visuel des habitants
+
+Le panneau habitants est maintenant un canevas central de grande largeur, et non
+une liste paginée. L'axe horizontal représente l'âge ; les lignes regroupent les
+peuples et sexes. Les hommes sont carrés, les femmes circulaires, avec contours
+colorés par peuple. Les cohortes montrent les effectifs exacts de **tous** les
+résidents du lieu au dernier recensement. Un clic isole une cohorte ; des clics
+successifs affinent la tranche d'âge jusqu'aux individus. Le zoom et le déplacement
+permettent de parcourir les groupes ; un survol identifie le marqueur, un clic
+ouvre la fiche et la généalogie. Les individus occupent des marqueurs de 34 pixels
+au zoom initial, dans le panneau central. Le moteur de génération est inchangé.
+
+Le filtre porte sur toute la population du lieu. L'API de lecture `resident-atlas`
+aggrège les âges, sexes et peuples, puis retourne au maximum 1 200 individus
+réels répartis de manière déterministe dans la sélection. Si celle-ci dépasse
+cette limite, l'échantillon de marqueurs est explicitement signalé ; les effectifs
+restent exhaustifs. On peut toujours ouvrir un identifiant exact avec la recherche.
+Aucune pagination n'est présentée, aucune simulation supplémentaire n'est lancée.

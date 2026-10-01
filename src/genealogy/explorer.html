@@ -615,13 +615,12 @@
                     ></select>
                     <p id="placeDetail" class="small"></p>
                   </div>
-                  <button id="more" hidden>Suivants →</button>
                 </div>
                 <div class="residentTools">
                   <input
                     id="residentSearch"
-                    placeholder="Filtrer les IDs chargés…"
-                    aria-label="Filtrer les habitants chargés"
+                    placeholder="Ouvrir un individu par son ID…"
+                    aria-label="Identifiant à ouvrir"
                   /><select id="residentSex" aria-label="Sexe des habitants">
                     <option value="">Tous sexes</option>
                     <option value="0">♂ Hommes</option>
@@ -632,7 +631,30 @@
                   ></select>
                 </div>
                 <div class="small" id="residentCount"></div>
-                <div id="residents" class="chips"></div>
+                <div class="atlasTools">
+                  <span class="small"
+                    >Âge → · lignes = peuples · ♂ carré / ♀ cercle</span
+                  ><button id="atlasReset">Tous les habitants</button
+                  ><button
+                    id="atlasZoomOut"
+                    aria-label="Dézoomer les habitants"
+                  >
+                    −</button
+                  ><button id="atlasZoomIn" aria-label="Zoomer les habitants">
+                    +
+                  </button>
+                </div>
+                <div id="residents" class="residentAtlas">
+                  <canvas
+                    id="residentCanvas"
+                    tabindex="0"
+                    aria-label="Atlas des habitants : cohortes cliquables, molette pour zoomer, glisser pour déplacer"
+                  ></canvas>
+                  <div id="residentTooltip" hidden></div>
+                </div>
+                <div id="residentReadout" class="small" role="status">
+                  Survoler une cohorte ou un individu · cliquer pour explorer.
+                </div>
               </div>
             </aside>
             <div class="individualMain">

@@ -1283,3 +1283,131 @@ button {
 button:disabled {
   cursor: default;
 }
+.residentsCard {
+  padding: 16px;
+}
+.residentsCard .head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.residentsCard .head > div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.residentsCard #placePicker {
+  width: 240px;
+  margin: 0;
+}
+.residentsCard #placeDetail {
+  width: 100%;
+}
+.residentsCard .residentTools {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 150px 170px;
+  gap: 8px;
+  margin: 12px 0;
+}
+.residentsCard .residentTools input {
+  grid-column: auto;
+}
+.residentsCard .residentTools input,
+.residentsCard .residentTools select {
+  padding: 8px;
+  font-size: 12px;
+}
+.atlasTools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.atlasTools > span {
+  margin-right: auto;
+}
+#residents.residentAtlas {
+  display: block;
+  position: relative;
+  grid-template-columns: none;
+  max-height: none;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #d6dfd2;
+  border-radius: 7px;
+  background: #f5f7f1;
+}
+#residentCanvas {
+  width: 100%;
+  height: 420px;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+#residentTooltip {
+  position: absolute;
+  pointer-events: none;
+  padding: 10px 12px;
+  background: #203c40;
+  color: #fffefa;
+  border-radius: 6px;
+  max-width: 235px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px #203c4022;
+  z-index: 2;
+}
+#residentReadout {
+  padding: 9px 0 0;
+  font-size: 12px;
+  min-height: 30px;
+}
+#residentCount {
+  font-size: 12px;
+  color: #287366;
+  font-weight: 600;
+}
+.localSidebar {
+  position: sticky;
+  top: 65px;
+}
+@media (max-width: 1150px) {
+  .residentsCard .residentTools {
+    grid-template-columns: 1fr 1fr;
+  }
+  .residentsCard .residentTools input {
+    grid-column: 1/-1;
+  }
+  .individualLayout {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .individualLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .localSidebar {
+    position: static;
+  }
+  .localSidebar #map {
+    height: 220px;
+  }
+  .residentsCard .head > div {
+    display: block;
+  }
+  .residentsCard #placePicker {
+    width: 100%;
+    margin: 8px 0;
+  }
+  .residentsCard #placeDetail {
+    margin: 7px 0;
+  }
+  #residentCanvas {
+    height: 430px;
+  }
+  .atlasTools > span {
+    width: 100%;
+  }
+}

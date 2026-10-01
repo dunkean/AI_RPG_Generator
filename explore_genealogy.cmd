@@ -7,11 +7,11 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
 )
-echo Open http://127.0.0.1:8771 in your browser. Keep this window open.
+echo Open http://127.0.0.1:8772 in your browser. Keep this window open.
 echo Binary worlds stay in memory. No automatic files or SQLite writes.
 if not "%~1"=="" (
-    ".venv\Scripts\python.exe" -m src.genealogy.cli explore "%~1" --port 8771
+    ".venv\Scripts\python.exe" -m src.genealogy.cli explore "%~1" --port 8772
 ) else (
-    ".venv\Scripts\python.exe" -m src.genealogy.cli studio --port 8771
+    ".venv\Scripts\python.exe" -m src.genealogy.cli studio --port 8772
 )
 if errorlevel 1 pause

@@ -12,7 +12,7 @@ const assert = require("node:assert/strict");
     }),
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8771");
+  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8772");
   await page.waitForFunction(
     () =>
       document.querySelector("#treeNote").textContent &&
@@ -110,14 +110,16 @@ const assert = require("node:assert/strict");
   assert.equal(await page.locator("#map").getAttribute("data-year"), mapState);
   assert.equal(await page.locator("#localMapDock #map").count(), 1);
   await page.selectOption("#residentSex", "1");
-  assert.equal(await page.locator('#residents [data-sex="0"]').count(), 0);
-  assert.ok((await page.locator('#residents [data-sex="1"]').count()) > 0);
-  await page.selectOption("#residentSex", "");
-  const chip = page.locator("#residents [data-person]").first();
-  const id = await chip.getAttribute("data-person");
-  await chip.click();
   await page.waitForFunction(
-    (id) => document.querySelector("#identity").value === id,
+    () => atlas.groups.length && atlas.groups.every((g) => g.sex === 1),
+  );
+  await page.selectOption("#residentSex", "");
+  await page.waitForFunction(() => atlas.groups.some((g) => g.sex === 0));
+  const id = await page.evaluate(() => residentRows[0].id);
+  await page.fill("#identity", String(id));
+  await page.locator("#search button.primary").click();
+  await page.waitForFunction(
+    (id) => document.querySelector("#identity").value === String(id),
     id,
   );
   assert.ok(
@@ -163,14 +165,12 @@ const assert = require("node:assert/strict");
   await page.mouse.up();
   assert.notEqual(await page.locator("#tree").getAttribute("viewBox"), prior);
   await page.click("#treeFit");
-  const nodes = await page
-    .locator(".treeNode")
-    .evaluateAll((nodes) =>
-      nodes.map((n) => ({
-        id: n.dataset.person,
-        t: n.getAttribute("transform"),
-      })),
-    );
+  const nodes = await page.locator(".treeNode").evaluateAll((nodes) =>
+    nodes.map((n) => ({
+      id: n.dataset.person,
+      t: n.getAttribute("transform"),
+    })),
+  );
   assert.equal(new Set(nodes.map((n) => n.id)).size, nodes.length);
   const coords = nodes.map((n) =>
     n.t

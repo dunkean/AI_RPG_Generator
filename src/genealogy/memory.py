@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .inspection import resident_atlas
 from .politics import PoliticalTimeline
 from .reproduction import ReproductiveTraits
 from .schema import STORED_FIELDS, null_sentinel
@@ -315,6 +316,12 @@ class MemoryArchive:
         start = np.searchsorted(ids, after, side="right")
         ids = ids[start : start + limit]
         return [self._person(int(pid)) for pid in ids]
+
+    def resident_atlas(self, settlement, **filters):
+        a, b = self.resident_ranges.get(settlement, (0, 0))
+        return resident_atlas(
+            self.data, self.resident_ids[a:b], self.summary["end_year"], **filters
+        )
 
     def map_at(self, year, race=None):
         if year not in self.saved_years:

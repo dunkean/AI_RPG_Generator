@@ -37,7 +37,7 @@ const assert = require("node:assert/strict");
     await new Promise((resolve) => setTimeout(resolve, 300));
     return route.continue();
   });
-  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8765");
+  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8772");
   await page.waitForFunction(
     () =>
       document.querySelector("#treeNote").textContent &&

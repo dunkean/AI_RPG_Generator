@@ -9,7 +9,10 @@ from contextlib import closing
 from hashlib import sha256
 from pathlib import Path
 
+import numpy as np
+
 from .config import Scenario, Settlement
+from .inspection import resident_atlas
 from .politics import PoliticalTimeline
 from .reproduction import ReproductiveTraits
 from .schema import STORED_FIELDS, null_sentinel
@@ -330,6 +333,24 @@ class Archive:
                 for row in rows:
                     row.update(self.reproductive_traits.describe(row))
             return rows
+
+    def resident_atlas(self, settlement, **filters):
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                "SELECT id,birth,race,sex FROM people WHERE place=? AND death IS NULL ORDER BY id",
+                (settlement,),
+            ).fetchall()
+            year = json.loads(
+                db.execute("SELECT value FROM metadata WHERE key='summary'").fetchone()[0]
+            )["end_year"]
+        values = np.asarray(rows, dtype=np.int64).reshape(-1, 4)
+        # The shared reducer uses dense local row positions, while returned IDs
+        # must retain their original archived identity.
+        data = {key: values[:, i] for i, key in enumerate(("id", "birth", "race", "sex"))}
+        result = resident_atlas(data, np.arange(len(values)), year, **filters)
+        for person in result["people"]:
+            person["id"] = int(values[person["id"], 0])
+        return result
 
     def map_at(self, year: int, race: int | None = None):
         if year not in self.saved_years:

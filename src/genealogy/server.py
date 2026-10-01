@@ -128,6 +128,14 @@ def make_handler(archive: Archive, studio: Studio | None = None):
                             integer("depth", 4),
                             query.get("direction", ["ancestors"])[0],
                         )
+                    elif path.path == "/api/resident-atlas":
+                        value = archive.resident_atlas(
+                            integer("place"), min_age=integer("min_age", 0),
+                            max_age=integer("max_age", 2000),
+                            race=integer("race") if "race" in query else None,
+                            sex=integer("sex") if "sex" in query else None,
+                            limit=integer("limit", 1200),
+                        )
                     elif path.path == "/api/residents":
                         value = archive.residents(
                             integer("place"), integer("limit", 100), integer("after", -1)

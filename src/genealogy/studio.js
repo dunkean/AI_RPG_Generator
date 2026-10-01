@@ -40,7 +40,7 @@ let readArchive = null,
 const api = async (path, payload) => {
   if (
     payload === undefined &&
-    /^(world|overview|config|map|person|lineage|residence|residents|distributions)([?]|$)/.test(
+    /^(world|overview|config|map|person|lineage|residence|residents|resident-atlas|distributions)([?]|$)/.test(
       path,
     ) &&
     !/[?&]archive=/.test(path)
@@ -94,7 +94,6 @@ let presets,
   person = null,
   lineage = [],
   chosenPlace = null,
-  lastResident = -1,
   counts = [],
   coordinates = new Map(),
   mapEpoch = 0,
@@ -1542,69 +1541,363 @@ function drawRanking(pop, y) {
 }
 
 let residentsEpoch = 0,
-  residentRows = [];
-function renderResidents() {
-  const text = $("residentSearch").value.trim(),
-    sex = $("residentSex").value,
-    race = $("residentRace").value;
-  const rows = residentRows.filter(
-    (p) =>
-      (!text || String(p.id).includes(text)) &&
-      (sex === "" || String(p.sex) === sex) &&
-      (race === "" || String(p.race) === race),
-  );
-  $("residents").replaceChildren(...rows.map(personButton));
-  if (!rows.length && residentRows.length)
-    $("residents").append(
-      el(
-        "p",
-        "Aucun résultat parmi les habitants chargés. Chargez la page suivante pour élargir la recherche.",
-        "small",
-      ),
-    );
-  $("residentCount").textContent =
-    rows.length +
-    " affichés / " +
-    residentRows.length +
-    " chargés · filtres sur la liste chargée";
+  residentRows = [],
+  atlas = null,
+  atlasScope = null;
+let atlasView = { x: 0, y: 0, scale: 1 },
+  atlasHits = [],
+  atlasDrag = null,
+  atlasHover = null;
+// The resident visualization owns a full-width workspace, rather than a sidebar list.
+document
+  .querySelector(".individualMain")
+  .prepend(document.querySelector(".residentsCard"));
+function atlasZoom(factor, x, y) {
+  const canvas = $("residentCanvas"),
+    px = x ?? canvas.clientWidth / 2,
+    py = y ?? canvas.clientHeight / 2;
+  const scale = Math.max(0.3, Math.min(5, atlasView.scale * factor));
+  atlasView.x = px - ((px - atlasView.x) * scale) / atlasView.scale;
+  atlasView.y = py - ((py - atlasView.y) * scale) / atlasView.scale;
+  atlasView.scale = scale;
+  renderResidents();
 }
-$("residentSearch").oninput = renderResidents;
-document.querySelector(".residentsCard").append($("more"));
-$("residentSex").onchange = $("residentRace").onchange = renderResidents;
-
-async function residents(id, append = false) {
-  const request = ++residentsEpoch;
-  if (!append) {
-    chosenPlace = id;
-    lastResident = -1;
-    residentRows = [];
-    $("residents").replaceChildren();
+function renderResidents() {
+  if (!atlas) return;
+  const canvas = $("residentCanvas"),
+    width = canvas.clientWidth || 1000,
+    height = canvas.clientHeight || 420,
+    pixel = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * pixel);
+  canvas.height = Math.round(height * pixel);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(pixel, 0, 0, pixel, 0, 0);
+  ctx.fillStyle = "#f5f7f1";
+  ctx.fillRect(0, 0, width, height);
+  ctx.translate(atlasView.x, atlasView.y);
+  ctx.scale(atlasView.scale, atlasView.scale);
+  atlasHits = [];
+  const chartWidth = Math.max(width, 650),
+    left = 95,
+    span = chartWidth - left - 35;
+  const min = atlasScope?.min_age ?? 0,
+    max =
+      atlasScope?.max_age ?? Math.max(80, ...atlas.groups.map((g) => g.age)),
+    range = Math.max(1, max - min + 1);
+  const detailed =
+    !atlas.sampled || (atlasScope && atlasScope.min_age === atlasScope.max_age);
+  // In the broad view, exact counts take priority over rendering millions of dots.
+  const individuals = detailed && (atlasScope !== null || atlas.matched <= 180);
+  const bandSize = atlasScope
+      ? Math.max(1, Math.ceil((range * 65) / span))
+      : Math.max(5, Math.ceil((range * 65) / span / 5) * 5),
+    groups = new Map();
+  for (const g of atlas.groups) {
+    const age = min + Math.floor((g.age - min) / bandSize) * bandSize,
+      key = `${g.race}:${g.sex}:${age}`;
+    if (!groups.has(key))
+      groups.set(key, { race: g.race, sex: g.sex, age, count: 0 });
+    groups.get(key).count += g.count;
   }
-  const list = await api(`residents?place=${id}&after=${lastResident}`);
+  const races = [...new Set(atlas.groups.map((g) => g.race))].sort(
+      (a, b) => a - b,
+    ),
+    maxCount = Math.max(1, ...[...groups.values()].map((g) => g.count));
+  const xAge = (age) => left + ((age - min + 0.5) / range) * span;
+  ctx.font = "11px system-ui";
+  ctx.fillStyle = "#75857c";
+  const tick = Math.max(1, Math.ceil(range / 12));
+  for (let age = min; age <= max; age += tick) {
+    const x = xAge(age);
+    ctx.textAlign = "center";
+    ctx.fillText(age + " ans", x, 25);
+    ctx.strokeStyle = "#dce3d7";
+    ctx.beginPath();
+    ctx.moveTo(x, 40);
+    ctx.lineTo(x, height / atlasView.scale + Math.abs(atlasView.y));
+    ctx.stroke();
+  }
+  let top = 60;
+  for (const race of races) {
+    ctx.textAlign = "left";
+    ctx.fillStyle = raceColor(race);
+    ctx.font = "bold 12px system-ui";
+    ctx.fillText(raceName(race), 8, top + 12);
+    top += 26;
+    for (const sex of [0, 1]) {
+      const people = residentRows.filter(
+          (p) => p.race === race && p.sex === sex,
+        ),
+        selectedGroups = [...groups.values()].filter(
+          (g) => g.race === race && g.sex === sex,
+        );
+      if (!selectedGroups.length) continue;
+      ctx.fillStyle = sex ? "#a15c87" : "#42799b";
+      ctx.font = "13px system-ui";
+      ctx.fillText(sex ? "♀ Femmes" : "♂ Hommes", 8, top + 35);
+      if (individuals) {
+        const buckets = new Map(),
+          columnWidth = span / range,
+          cols = Math.max(1, Math.floor(columnWidth / 42));
+        for (const p of people) {
+          const age = atlas.year - p.birth;
+          if (!buckets.has(age)) buckets.set(age, []);
+          buckets.get(age).push(p);
+        }
+        let rows = 1;
+        for (const [age, items] of buckets) {
+          rows = Math.max(rows, Math.ceil(items.length / cols));
+          items.forEach((p, i) => {
+            const col = i % cols,
+              row = Math.floor(i / cols),
+              x =
+                xAge(age) + (col - (Math.min(cols, items.length) - 1) / 2) * 42,
+              y = top + 26 + row * 44;
+            const r = 17,
+              selected = p.id === person?.id;
+            ctx.fillStyle = sex ? "#eed7e5" : "#d5e7f1";
+            ctx.strokeStyle = selected ? "#287366" : raceColor(race);
+            ctx.lineWidth = selected ? 3 : 1.5;
+            ctx.beginPath();
+            if (sex) ctx.arc(x, y, r, 0, Math.PI * 2);
+            else ctx.roundRect(x - r, y - r, r * 2, r * 2, 4);
+            ctx.fill();
+            ctx.stroke();
+            ctx.textAlign = "center";
+            ctx.fillStyle = sex ? "#98587e" : "#386b8d";
+            ctx.font = "bold 12px system-ui";
+            ctx.fillText(sex ? "♀" : "♂", x, y + 4);
+            if (atlasView.scale >= 1.4) {
+              ctx.font = "9px system-ui";
+              ctx.fillStyle = "#304843";
+              ctx.fillText("#" + p.id, x, y + 25);
+            }
+            atlasHits.push({ x, y, r: 20, person: p, age });
+          });
+        }
+        top += rows * 44 + 30;
+      } else {
+        for (const g of selectedGroups) {
+          const x = xAge(g.age + (bandSize - 1) / 2),
+            y = top + 34,
+            r = 16 + 18 * Math.sqrt(g.count / maxCount);
+          ctx.fillStyle = sex ? "#e4c1d5" : "#b5d2e4";
+          ctx.strokeStyle = raceColor(race);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          if (sex) ctx.arc(x, y, r, 0, Math.PI * 2);
+          else ctx.roundRect(x - r, y - r, r * 2, r * 2, 6);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#28464a";
+          ctx.font = "bold 11px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText(fmt(g.count), x, y + 4);
+          atlasHits.push({
+            x,
+            y,
+            r: r + 3,
+            group: { ...g, max_age: Math.min(max, g.age + bandSize - 1) },
+          });
+        }
+        top += 80;
+      }
+    }
+    ctx.strokeStyle = "#d5dfd0";
+    ctx.beginPath();
+    ctx.moveTo(8, top);
+    ctx.lineTo(chartWidth - 20, top);
+    ctx.stroke();
+    top += 20;
+  }
+  if (!atlas.matched) {
+    ctx.fillStyle = "#73837d";
+    ctx.textAlign = "left";
+    ctx.font = "14px system-ui";
+    ctx.fillText("Aucun habitant dans cette sélection.", left, 100);
+  }
+  canvas.dataset.matched = atlas.matched;
+  canvas.dataset.mode = individuals ? "individuals" : "cohorts";
+  canvas.dataset.points = atlasHits.length;
+  $("residentCount").textContent =
+    fmt(atlas.matched) +
+    " habitants / " +
+    fmt(atlas.total) +
+    " dans le lieu · " +
+    (individuals
+      ? atlas.sampled
+        ? fmt(residentRows.length) +
+          " individus représentatifs · effectifs exacts"
+        : "un marqueur par individu"
+      : "cohortes exhaustives · taille = effectif") +
+    (atlasScope
+      ? " · sélection " + atlasScope.min_age + "–" + atlasScope.max_age + " ans"
+      : "");
+}
+function atlasHit(e) {
+  const box = $("residentCanvas").getBoundingClientRect(),
+    x = (e.clientX - box.left - atlasView.x) / atlasView.scale,
+    y = (e.clientY - box.top - atlasView.y) / atlasView.scale;
+  return (
+    [...atlasHits].reverse().find((p) => Math.hypot(x - p.x, y - p.y) <= p.r) ||
+    null
+  );
+}
+$("residentCanvas").addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const b = $("residentCanvas").getBoundingClientRect();
+    atlasZoom(
+      e.deltaY > 0 ? 0.87 : 1.15,
+      e.clientX - b.left,
+      e.clientY - b.top,
+    );
+  },
+  { passive: false },
+);
+$("residentCanvas").onpointerdown = (e) => {
+  atlasDrag = {
+    x: e.clientX,
+    y: e.clientY,
+    vx: atlasView.x,
+    vy: atlasView.y,
+    moved: false,
+  };
+  $("residentCanvas").setPointerCapture(e.pointerId);
+};
+$("residentCanvas").onpointermove = (e) => {
+  if (atlasDrag) {
+    const dx = e.clientX - atlasDrag.x,
+      dy = e.clientY - atlasDrag.y;
+    atlasDrag.moved ||= Math.hypot(dx, dy) > 4;
+    if (atlasDrag.moved) {
+      atlasView.x = atlasDrag.vx + dx;
+      atlasView.y = atlasDrag.vy + dy;
+      renderResidents();
+    }
+    return;
+  }
+  atlasHover = atlasHit(e);
+  const t = $("residentTooltip");
+  t.hidden = !atlasHover;
+  if (atlasHover) {
+    const hit = atlasHover,
+      p = hit.person || hit.group;
+    t.textContent =
+      (hit.person
+        ? "#" + p.id + " · " + hit.age + " ans"
+        : fmt(p.count) + " habitants · " + p.age + "–" + p.max_age + " ans") +
+      " · " +
+      (p.sex ? "♀ Femmes" : "♂ Hommes") +
+      " · " +
+      raceName(p.race);
+    const b = $("residentCanvas").getBoundingClientRect();
+    t.style.left = Math.min(e.clientX - b.left + 12, b.width - 235) + "px";
+    t.style.top = Math.max(4, e.clientY - b.top - 48) + "px";
+    $("residentReadout").textContent =
+      t.textContent +
+      (hit.person
+        ? " · cliquer pour ouvrir la fiche"
+        : " · cliquer pour isoler cette cohorte");
+  }
+};
+$("residentCanvas").onpointerleave = () => ($("residentTooltip").hidden = true);
+$("residentCanvas").onpointercancel = () => (atlasDrag = null);
+$("residentCanvas").onpointerup = safely(async (e) => {
+  const moved = atlasDrag?.moved;
+  atlasDrag = null;
+  if (moved) return;
+  const hit = atlasHit(e);
+  if (!hit) return;
+  if (hit.person) {
+    await selectPerson(hit.person.id);
+    document
+      .querySelector(".personCard")
+      .scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } else {
+    atlasScope = { min_age: hit.group.age, max_age: hit.group.max_age };
+    $("residentRace").value = hit.group.race;
+    $("residentSex").value = hit.group.sex;
+    await residents(chosenPlace, false, true);
+  }
+});
+$("residentCanvas").onkeydown = (e) => {
+  if (
+    ["+", "=", "-", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
+      e.key,
+    )
+  )
+    e.preventDefault();
+  if (["+", "="].includes(e.key)) atlasZoom(1.2);
+  else if (e.key === "-") atlasZoom(0.8);
+  else {
+    atlasView.x += { ArrowLeft: 40, ArrowRight: -40 }[e.key] || 0;
+    atlasView.y += { ArrowUp: 40, ArrowDown: -40 }[e.key] || 0;
+    renderResidents();
+  }
+};
+$("atlasZoomIn").onclick = () => atlasZoom(1.25);
+$("atlasZoomOut").onclick = () => atlasZoom(0.8);
+$("atlasReset").onclick = safely(async () => {
+  atlasScope = null;
+  $("residentSex").value = "";
+  $("residentRace").value = "";
+  await residents(chosenPlace, false, true);
+});
+$("residentSex").onchange = $("residentRace").onchange = safely(() =>
+  residents(chosenPlace, false, true),
+);
+$("residentSearch").onkeydown = safely(async (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const text = $("residentSearch").value.trim();
+    if (!/^#?\d+$/.test(text)) throw Error("Saisir un identifiant numérique.");
+    await selectPerson(Number(text.replace("#", "")));
+    document
+      .querySelector(".personCard")
+      .scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+});
+new ResizeObserver(() => renderResidents()).observe($("residentCanvas"));
+async function residents(id, append = false, preserve = false) {
+  const request = ++residentsEpoch;
+  if (chosenPlace !== id || !preserve) {
+    atlasScope = null;
+    $("residentSex").value = "";
+    $("residentRace").value = "";
+    $("residentSearch").value = "";
+  }
+  chosenPlace = id;
+  atlasView = { x: 0, y: 0, scale: 1 };
+  $("residentTooltip").hidden = true;
+  const query = new URLSearchParams({ place: id });
+  for (const [key, value] of Object.entries({
+    ...atlasScope,
+    sex: $("residentSex").value,
+    race: $("residentRace").value,
+  }))
+    if (value !== "" && value !== null && value !== undefined)
+      query.set(key, value);
+  $("residentCount").textContent = "Lecture de la population…";
+  const result = await api("resident-atlas?" + query);
   if (request !== residentsEpoch) return;
+  atlas = result;
+  residentRows = result.people;
   $("placePicker").value = id;
   $("placeTitle").textContent = placeName(id);
   $("placeDetail").textContent =
     kindLabel(place(id).kind) +
-    " · habitants au dernier recensement (" +
-    world.summary.end_year +
+    " · population au dernier recensement (" +
+    atlas.year +
     ")";
-  residentRows.push(...list);
-  renderResidents();
   $("globalSelection").textContent =
     placeName(id) +
-    " · " +
-    kindLabel(place(id).kind) +
     " · " +
     fmt(mapPopulation.get(id)) +
     " habitants en " +
     selectedYear();
-  if (list.length) lastResident = list.at(-1).id;
-  else if (!append)
-    $("residents").append(
-      el("span", "Aucun habitant vivant dans ce lieu.", "small"),
-    );
-  $("more").hidden = list.length < 100;
+  renderResidents();
 }
 
 function fact(label, value) {
@@ -2489,7 +2782,6 @@ $("depth").onchange = $("direction").onchange = safely(async () => {
   await drawTree();
   await drawMap();
 });
-$("more").onclick = safely(() => residents(chosenPlace, true));
 
 safely(async () => {
   presets = await api("presets");

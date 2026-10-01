@@ -14,7 +14,7 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
     }),
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8771");
+  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8772");
   await page.waitForFunction(
     () => document.querySelector("#treeNote").textContent,
   );
