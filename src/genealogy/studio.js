@@ -379,7 +379,7 @@ function syncPreview() {
   $("targetPreview").textContent = config.target_population
     ? (config.target_mode === "report"
         ? "Fondateurs fixés · cible indicative "
-        : "Fondateurs recalibrés · cible ") + fmt(config.target_population)
+        : "Plafond · un seul calcul · ") + fmt(config.target_population)
     : "Sans population cible";
   $("mapNotice").textContent = config.settlements.length
     ? "Carte explicite : nombre virtuel et profils ignorés. Modifier la carte dans le JSON."
@@ -534,10 +534,7 @@ async function poll() {
   $("progressBox").hidden = status.state === "idle";
   $("progress").value = status.progress ?? 0;
   if (status.state === "running") {
-    const phase =
-      status.phase?.startsWith("Calibration") && !status.calibration_pass
-        ? "Calibration des fondateurs · essais pilotes (4 maximum)"
-        : status.phase;
+    const phase = status.phase;
     $("progressText").textContent = phase + " · année " + status.year;
     $("progressCount").textContent =
       fmt(status.population) +
@@ -1667,6 +1664,22 @@ async function loadWorld() {
         " %"
       : "") +
     ".";
+  if (s.regulation?.enabled) {
+    $("diagnostics").textContent +=
+      " · Plancher " +
+      fmt(s.regulation.floor) +
+      " / plafond " +
+      fmt(s.regulation.ceiling) +
+      " · " +
+      fmt(s.regulation.additional_births) +
+      " naissances supplémentaires" +
+      " · " +
+      fmt(s.regulation.additional_deaths) +
+      " décès de régulation" +
+      " · " +
+      fmt(s.regulation.below_floor_years) +
+      " années sous le plancher";
+  }
 }
 
 $("search").onsubmit = safely(async (e) => {

@@ -13,7 +13,7 @@ une histoire cohérente, mesurable et ajustable avant d'y greffer le monde.
 ## Lancer et explorer
 
 Sous Windows, double-cliquer sur `explore_genealogy.cmd`, puis ouvrir
-http://127.0.0.1:8767. Le lanceur démarre une petite population de démonstration
+http://127.0.0.1:8768. Le lanceur démarre une petite population de démonstration
 **en RAM**, sans produire de fichier ni d'archive SQLite. Garder sa fenêtre
 ouverte. Le scénario « civilisation » permet ensuite de configurer un calcul massif.
 Les mondes sont éphémères : le serveur garde le monde actif et deux alternatives
@@ -35,7 +35,7 @@ cartes explicites et métadonnées ; pendant son édition, les contrôles sont
 verrouillés jusqu'à application ou annulation pour préserver les changements.
 
 **Générer ce monde** lance un calcul en arrière-plan. La page indique la
-calibration éventuelle, l'année courante, la population et la progression. Un
+régulation démographique, l'année courante, la population et la progression. Un
 seul calcul peut tourner par serveur. À la fin, le résultat s’ouvre automatiquement si cet onglet est resté sur la configuration. Si une exploration est en cours, **Explorer le résultat** permet de basculer explicitement.
 Chaque nouveau calcul garde des tableaux binaires NumPy propriétaires en RAM,
 avec identifiants denses, événements datés et index d'exploration. Il ne passe pas
@@ -69,7 +69,7 @@ Depuis la racine du dépôt, sous PowerShell :
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 
 # Studio sans écriture de données ; petite démo immédiate.
-.\.venv\Scripts\python.exe -m src.genealogy.cli studio --port 8767
+.\.venv\Scripts\python.exe -m src.genealogy.cli studio --port 8768
 
 # Calcul exact en RAM, affiche ses statistiques puis libère le monde.
 .\.venv\Scripts\python.exe -m src.genealogy.cli simulate config/genealogy/civilization.yaml --years 25 --quiet
@@ -345,22 +345,45 @@ Les capacités effectives sont sauvegardées dans la table `settlements`.
 .\.venv\Scripts\python.exe -m src.genealogy.cli generate config/genealogy/medieval.yaml --target 1000000 --output output/genealogy/kingdom.sqlite
 ```
 
-La cible n'ajoute pas des naissances artificielles. Des pilotes à capacité par fondateur équivalente estiment le rapport
-population finale/fondateurs, puis ajustent **le nombre initial de personnes** lorsque `target_mode: calibrate_founders`. Le pilote est densifié pour éviter un marché matrimonial presque vide, et une itération affine l’estimation jusqu’à quatre essais. Ces essais sont numérotés dans la progression, qui reste croissante ; leur calendrier recommence avant la simulation finale, sans relancer le job.
-Cette estimation reste approximative, surtout si les petits marchés matrimoniaux,
-capacités fixes ou fortes crises rendent la croissance non linéaire.
-`calibration_population` augmente la taille du pilote ; `target_tolerance`
-fixe la tolérance de rapport, par défaut 10 %. L'archive indique l'écart réel
-et `target_status: within_tolerance` ou `outside_tolerance`. Elle ne prétend
-pas réussir une cible manquée. Un pilote qui s'effondre presque entièrement
-est refusé avant la génération complète.
+La stratégie `target_mode: bounded` est désormais le défaut : **un seul run**,
+avec une population initiale fixe qui sert de plancher de récupération et une
+`target_population` qui sert de plafond, non d'objectif final obligatoire. Sans
+plafond renseigné, la simulation suit ses règles naturelles. `report` conserve
+un mode libre, avec comparaison indicative à la cible.
 
-Avec `target_mode: report`, les fondateurs restent fixés, la cible est seulement comparée au résultat. Pour une contrainte « 1 million initial, 50 millions final », utiliser ce mode et ajuster la démographie : ce prototype ne garantit pas de trouver automatiquement ces paramètres.
+La natalité est ajustée chaque année si la population est près du plancher ou en
+dessous. Le contrôleur estime les pertes naturelles et la survie des nouveau-nés,
+puis renforce les probabilités des seules mères biologiquement admissibles. Les
+âges fertiles, couples, stérilité, croisements et espacements restent effectifs.
+La hausse conserve le profil d'âge et est bornée : facteur maximal 4 et probabilité
+annuelle maximale 0,85 par défaut, sans diminuer une probabilité biologique déjà
+supérieure. Les probabilités nulles restent nulles.
 
-Avec `target_mode: calibrate_founders` et `target_population`, `initial_population` devient une
-estimation remplacée par le pilote. Pour imposer les fondateurs, laisser la
-cible vide et constater la population obtenue. Une extinction est un résultat
-possible, conservé avec toute son histoire.
+Une crise nuisible active suspend cette compensation ; ses décès et sa baisse
+de natalité sont conservés. La population peut passer sous le plancher. Après
+la crise, la compensation reprend progressivement ; elle ne peut garantir un
+rétablissement si aucun parent fertile ne survit ou si la simulation s'éteint.
+Aucune personne n'est ressuscitée, aucun parent ou enfant fictif n'est injecté.
+
+Le plafond est strict au recensement annuel. Si les décès naturels ne suffisent
+pas, des décès supplémentaires sont échantillonnés parmi les survivants, avec
+pondération par leurs risques de mortalité (âge, sexe, peuple et événements).
+Les décès naturels/maternels sont toujours conservés. Le quota conditionnel
+respecte exactement le plafond tout en réutilisant le flux aléatoire annuel.
+La population transitoire après les naissances, avant les décès de l'année, peut
+être plus élevée ; elle n'est pas publiée comme un recensement annuel.
+
+Réglages JSON : `regulation_response_years` (3), `regulation_buffer` (0,02),
+`regulation_max_fertility_factor` (4), `regulation_max_birth_probability` (0,85).
+Le contrôleur est séparé dans `regulation.py` pour permettre des accélérations
+et politiques par peuple/nation/période par la suite. Le résumé fournit les
+naissances/décès supplémentaires, les années sous le plancher et les facteurs
+aux dates de recensement. Le modèle régulé est versionné `csr-soa-bounded-v4`.
+
+Les anciens scénarios `calibrate_founders` sont interprétés comme `bounded`.
+`calibration_population` et les anciens callbacks restent acceptés pour charger
+les configurations existantes, mais n'exécutent aucun pilote. Le nombre initial
+n'est jamais recalculé. Un plafond inférieur au plancher est refusé.
 
 ## Périodes et événements
 
@@ -478,7 +501,7 @@ Les groupes sont différents suivant le processus ; une règle doit être sans
 effet secondaire, car elle peut être appelée plusieurs fois par année.
 `engine.stream("nom_unique", process)` fournit un flux reproductible par année
 et processus, qui avance entre les appels au lieu de recommencer les tirages.
-Les mêmes règles s’appliquent au pilote et au run complet ; les objets du pilote sont copiés pour ne pas transmettre leur état à la simulation finale. Définir un
+Les règles s’appliquent au run unique. Définir un
 `descriptor` sérialisable avec nom, version et paramètres pour rendre leur
 provenance exploitable ; sans lui, seul le type Python est enregistré.
 
@@ -643,4 +666,12 @@ fusionnent les filtres, sans changer l'ordre des individus ni les tirages.
 Ces mesures ne sont pas celles d'un monde final de 50 millions. Le simulateur
 conserve encore tous les ancêtres en RAM pendant le calcul ; le benchmark cible
 50 millions / 1 000 ans reste à faire. Le temps de la première compilation et
-les éventuels essais de calibration s'ajoutent lorsqu'ils sont nécessaires.
+aucun essai de calibration n'est exécuté.
+
+
+Validation du nouveau contrôleur : 3 000 fondateurs, plafond 3 600, peste de 40 %
+en 1010 avec fécondité divisée par quatre : population minimale 1 822, remontée
+au-dessus de 3 000 et respect du plafond sur 80 ans. Un test de 100 000 fondateurs,
+500 lieux, plafond 105 000 et durée 100 ans a pris 4,13 s en RAM, un seul run,
+sans franchissement du plancher ni modification des fondateurs. Ces scénarios
+ne prouvent pas la performance sur 50 millions / 1 000 ans.

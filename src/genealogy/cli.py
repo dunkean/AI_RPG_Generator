@@ -89,7 +89,6 @@ def main():
                     initial_population=10000,
                     virtual_settlements=500,
                     years=10,
-                    target_mode="report",
                 )
             )
             serve(generate(config, None), args.port)

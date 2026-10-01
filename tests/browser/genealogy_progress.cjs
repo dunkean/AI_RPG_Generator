@@ -28,9 +28,7 @@ const assert = require("node:assert/strict");
       year: 1001,
       population: 50,
       progress: 0.01,
-      phase: "Calibration des fondateurs · essai 1/4",
-      calibration_pass: 1,
-      calibration_limit: 4,
+      phase: "Simulation annuelle · régulation dynamique",
     };
     return fulfill(route, status);
   });
@@ -61,35 +59,37 @@ const assert = require("node:assert/strict");
     document.querySelector("#generate").dispatchEvent(new MouseEvent("click")),
   );
   await page.waitForFunction(() =>
-    document.querySelector("#progressText").textContent.includes("essai 1/4"),
+    document
+      .querySelector("#progressText")
+      .textContent.includes("Simulation annuelle"),
   );
   assert.equal(requests, 1);
   status = {
     ...status,
-    year: 1001,
+    year: 1002,
     progress: 0.08,
-    calibration_pass: 2,
-    phase: "Calibration des fondateurs · essai 2/4",
+    phase: "Simulation annuelle · régulation dynamique",
   };
   await page.evaluate(() => poll());
   assert.ok(
-    (await page.locator("#progressText").textContent()).includes("essai 2/4"),
+    (await page.locator("#progressText").textContent()).includes("année 1002"),
   );
   assert.equal(await page.locator("#progress").evaluate((e) => e.value), 0.08);
   status = {
     ...status,
-    calibration_pass: undefined,
-    phase: "Calibration · échantillon",
+    year: 1003,
+    progress: 0.12,
+    phase: "Simulation annuelle · régulation dynamique",
   };
   await page.evaluate(() => poll());
   assert.ok(
-    (await page.locator("#progressText").textContent()).includes("4 maximum"),
+    (await page.locator("#progressText").textContent()).includes("année 1003"),
   );
   assert.equal(requests, 1);
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(
-    "PASS: numbered pilots, compatible legacy status, submission guard; no real generation submitted",
+    "PASS: single-run chronological progress, submission guard; no real generation submitted",
   );
 })().catch((e) => {
   console.error(e);

@@ -86,7 +86,7 @@ def test_catalogue_survives_missing_and_corrupt_archives(studio):
     assert len(restored.catalogue()["archives"]) == 1
 
 
-def test_target_calibration_reports_progress(studio):
+def test_target_regulation_uses_one_run(studio):
     studio.start(
         {
             "scenario": {
@@ -99,37 +99,43 @@ def test_target_calibration_reports_progress(studio):
     )
     studio.worker.join(timeout=10)
     assert studio.status()["state"] == "complete"
-    assert studio.status()["summary"]["calibration"]["pilot_initial"] == 100
+    assert studio.status()["summary"]["calibration"] is None
+    assert studio.status()["summary"]["simulation_runs"] == 1
+    assert studio.status()["summary"]["initial_population"] == 30
 
 
-def test_calibration_passes_are_numbered_without_progress_restart(studio, monkeypatch):
+def test_single_run_progress_never_restarts(studio, monkeypatch):
     from src.genealogy.engine import generate as real_generate
 
     observations, calls = [], []
 
-    def controlled(config, path, progress, calibration_progress, calibration_stage):
-        calls.append(path)
-        for attempt in range(1, 5):
-            calibration_stage(attempt, 4)
+    def controlled(config, path, progress):
+        calls.append((config.initial_population, config.seed))
+
+        def observed(year, count):
+            progress(year, count)
             observations.append(studio.status())
-            for offset in (1, 2):
-                calibration_progress(config.start_year + offset, 50)
-                observations.append(studio.status())
-        return real_generate(
-            config.model_copy(update={"target_population": None}), path, progress
-        )
+
+        return real_generate(config, path, observed)
 
     monkeypatch.setattr("src.genealogy.studio.generate", controlled)
-    studio.start({"scenario": {"initial_population": 30, "target_population": 100, "years": 2}})
+    studio.start(
+        {
+            "scenario": {
+                "initial_population": 30,
+                "target_population": 100,
+                "years": 4,
+                "target_mode": "calibrate_founders",
+            }
+        }
+    )
     studio.worker.join(timeout=10)
     assert studio.status()["state"] == "complete"
-    assert len(calls) == 1  # four pilots are part of one submitted job
-    assert {s["id"] for s in observations} == {studio.status()["id"]}
-    percentages = [s["progress"] for s in observations]
-    assert percentages == sorted(percentages)
-    assert percentages[-1] == 0.25
-    for observation in observations:
-        assert f"essai {observation['calibration_pass']}/4" in observation["phase"]
+    assert len(calls) == 1
+    assert calls[0][0] == 30
+    assert [row["year"] for row in observations] == [1001, 1002, 1003, 1004]
+    assert [row["progress"] for row in observations] == [0.25, 0.5, 0.75, 1]
+    assert all("calibration_pass" not in row for row in observations)
 
 
 def test_studio_http_validation_generation_assets_and_origin(studio):

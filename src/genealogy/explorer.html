@@ -101,27 +101,27 @@
                   ><input id="startYear" type="number" step="1" />
                 </div>
                 <div class="field">
-                  <label for="founders">Population fondatrice</label
+                  <label for="founders">Population initiale · plancher</label
                   ><input id="founders" type="number" min="2" step="1" />
                 </div>
                 <div class="field">
                   <label for="targetMode">Gestion de la cible</label
                   ><select id="targetMode">
                     <option value="report">
-                      Fondateurs fixés · mesurer l’écart
+                      Simulation libre · cible indicative
                     </option>
-                    <option value="calibrate_founders">
-                      Calibrer le nombre de fondateurs
+                    <option value="bounded">
+                      Plancher / plafond · un seul calcul
                     </option>
                   </select>
                 </div>
                 <div class="field">
-                  <label for="target">Population cible · facultative</label
+                  <label for="target">Population maximale · facultative</label
                   ><input
                     id="target"
                     type="number"
                     min="2"
-                    placeholder="Sans calibration"
+                    placeholder="Sans plafond"
                   />
                 </div>
                 <div class="field">
@@ -377,9 +377,10 @@
                 explorer le monde ouvert pendant le calcul.
               </p>
               <p class="note">
-                Paramètres de fiction ajustables. La cible est estimée par un
-                pilote si la calibration des fondateurs est choisie ; sinon leur
-                nombre reste fixé. La cible peut ne pas être atteinte.
+                Un seul calcul. La mortalité régule le plafond ; la natalité
+                favorise le retour au plancher. Les crises peuvent faire passer
+                la population sous le plancher. Le plafond n'est pas une cible à
+                atteindre.
               </p>
             </div>
           </aside>

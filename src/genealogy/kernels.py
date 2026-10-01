@@ -10,6 +10,22 @@ from numba import njit, prange
 
 
 @njit(cache=True, nogil=True)
+def expected_natural_deaths(ids, birth, sex, race, table, maximum, male_factor, year):
+    total = 0.0
+    for pid in ids:
+        r = race[pid]
+        age = year - birth[pid]
+        if age >= maximum[r]:
+            total += 1.0
+        else:
+            q = table[r, age]
+            if sex[pid] == 0:
+                q *= male_factor[r]
+            total += min(1.0, q)
+    return total
+
+
+@njit(cache=True, nogil=True)
 def census_counts(ids, birth, sex, race, partner, minimum, maximum, year):
     young, adults, elders, fertile, partnered = 0, 0, 0, 0, 0
     for index in prange(len(ids)):

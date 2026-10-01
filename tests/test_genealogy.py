@@ -14,7 +14,9 @@ from src.genealogy.store import Archive
 
 
 def scenario(**changes):
-    return Scenario.model_validate({"initial_population": 300, "years": 30, "snapshot_interval": 1, **changes})
+    return Scenario.model_validate(
+        {"initial_population": 300, "years": 30, "snapshot_interval": 1, **changes}
+    )
 
 
 def quiet_demography(**changes):
@@ -366,8 +368,11 @@ def test_target_virtual_capacity_scales_and_error_is_reported(tmp_path):
     config = scenario(target_population=10000, years=20)
     assert sum(p.capacity for p in virtual_map(config)) >= 1.5 * config.target_population - 20
     result = generate(config, tmp_path / "target.sqlite")
-    assert abs(result["target_relative_error"]) < 0.20
-    assert result["calibration"]["estimated_initial"] == result["initial_population"]
+    assert result["population"] <= config.target_population
+    assert result["initial_population"] == config.initial_population
+    assert result["calibration"] is None
+    assert result["simulation_runs"] == 1
+    assert result["regulation"]["enabled"]
 
 
 def test_fantasy_crossbreeding_and_racial_fertility(tmp_path):
@@ -536,7 +541,7 @@ def test_minority_partner_matching_uses_compatible_pool():
     assert np.sum(eligible & (d["partner"][ids] >= 0)) >= eligible.sum() * 0.25
 
 
-def test_generate_calibration_respects_custom_rules(tmp_path):
+def test_dynamic_birth_regulation_respects_custom_rules(tmp_path):
     class NoBirths:
         def apply(self, engine, process, ids, hazards):
             if process == "births":
@@ -545,12 +550,9 @@ def test_generate_calibration_respects_custom_rules(tmp_path):
     config = scenario(target_population=1000, years=10)
     result = generate(config, tmp_path / "rules.sqlite", rules=[NoBirths()])
     assert result["births"] == 0
-    pilot = Engine(
-        scenario(initial_population=result["calibration"]["pilot_initial"], years=10),
-        rules=[NoBirths()],
-    )
-    expected = pilot.run()["population"]
-    assert result["calibration"]["pilot_final"] == expected
+    assert result["calibration"] is None
+    assert result["initial_population"] == config.initial_population
+    assert result["regulation"]["unmet_expected_births"] > 0
 
 
 def test_extension_random_streams_advance_and_isolate_processes():

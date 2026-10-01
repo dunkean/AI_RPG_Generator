@@ -286,7 +286,11 @@ class Scenario(Settings):
     initial_population: int = Field(default=2000, ge=2, le=100_000_000)
     target_population: int | None = Field(default=None, ge=2, le=100_000_000)
     calibration_population: int = Field(default=2000, ge=100, le=100000)
-    target_mode: Literal["calibrate_founders", "report"] = "calibrate_founders"
+    target_mode: Literal["bounded", "report", "calibrate_founders"] = "bounded"
+    regulation_buffer: Probability = 0.02
+    regulation_response_years: Positive = 3
+    regulation_max_fertility_factor: float = Field(default=4, ge=1, le=100)
+    regulation_max_birth_probability: Probability = 0.85
     target_tolerance: Probability = 0.1
     snapshot_interval: int = Field(default=10, ge=1, le=10000)
     virtual_settlements: int = Field(default=16, ge=1, le=10000)
@@ -315,6 +319,15 @@ class Scenario(Settings):
 
     @model_validator(mode="after")
     def references(self):
+        # Old scenarios load safely, but never trigger historical calibration pilots.
+        if self.target_mode == "calibrate_founders":
+            self.target_mode = "bounded"
+        if (
+            self.target_mode == "bounded"
+            and self.target_population is not None
+            and self.target_population < self.initial_population
+        ):
+            raise ValueError("Population ceiling must be at least the initial population floor")
         if not self.settlements:
             types = self.settlement_types
             if not types or (

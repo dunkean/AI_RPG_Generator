@@ -10,7 +10,6 @@ import json
 import math
 import time
 from collections import defaultdict
-from copy import deepcopy
 from itertools import pairwise
 from pathlib import Path
 from zlib import crc32
@@ -20,6 +19,7 @@ import numpy as np
 from .config import Demography, Scenario, Society, virtual_map
 from .events import EventBuffer
 from .politics import PoliticalTimeline
+from .regulation import PopulationRegulator
 from .schema import DTYPE, NO_YEAR, PersonColumns
 from .store import Store
 
@@ -121,6 +121,7 @@ class Engine:
         self.demography = config.demography
         self._apply_periods()
         self.rows = []
+        self.regulator = PopulationRegulator(config)
         self.moves, self.new_unions, self.closed_unions = (
             EventBuffer(),
             EventBuffer(),
@@ -777,9 +778,44 @@ class Engine:
         for pair, crossing in self.crossbreeding.items():
             mask = (pair_codes[:, 0] == pair[0]) & (pair_codes[:, 1] == pair[1])
             factor[mask] *= crossing.fertility_factor
-        mothers = fertile[
-            self.rng.random(len(fertile)) < scaled_probability(probability, factor * local_pressure)
-        ]
+        probabilities = scaled_probability(probability, factor * local_pressure)
+        adjusted = probabilities
+        if self.regulator.enabled:
+            from .kernels import expected_natural_deaths
+
+            expected = expected_natural_deaths(
+                ids,
+                d["birth"],
+                d["sex"],
+                d["race"],
+                self.race_mortality,
+                self.race_max_age,
+                self.race_male_mortality,
+                self.year,
+            )
+            infant = self.race_mortality[:, 0]
+            survival_by_race = 1 - (
+                np.minimum(1, infant * self.race_male_mortality) * self.race_male_probability
+                + infant * (1 - self.race_male_probability)
+            )
+            survival = float(survival_by_race[races].mean()) if len(races) else 1.0
+            crisis = any(
+                e.start_year <= self.year <= e.end_year
+                and (
+                    e.extra_mortality > 0
+                    or e.mortality_factor > 1
+                    or e.fertility_factor < 1
+                    or e.capacity_factor < 1
+                )
+                for e in self.config.events
+            )
+            adjusted = self.regulator.birth_probabilities(
+                probabilities, len(ids), expected, survival, crisis=crisis
+            )
+        draws = self.rng.random(len(fertile))
+        mothers = fertile[draws < adjusted]
+        if self.regulator.enabled:
+            self.regulator.record_births(draws, probabilities, adjusted)
         fathers = d["partner"][mothers].copy()
         babies = self._allocate(len(mothers))
         d = self.data  # allocation may have grown the array
@@ -825,9 +861,11 @@ class Engine:
         factor, extra, _, _, _ = self._events(ids, "deaths")
         rate = 1 - (1 - scaled_probability(rate, factor)) * (1 - extra)
         rate[ages >= self.race_max_age[races]] = 1
-        mortality = self.rng.random(len(ids)) < rate
+        draws = self.rng.random(len(ids))
+        mortality = draws < rate
         # Living IDs stay ordered: births append larger IDs and deaths only filter.
         mortality[np.searchsorted(ids, maternal)] = True
+        mortality = self.regulator.enforce_ceiling(rate, draws, mortality)
         dead = ids[mortality]
         infants = int(np.sum(self.year - d["birth"][dead] == 0))
         d["death"][dead] = self.year
@@ -1141,6 +1179,12 @@ class Engine:
             self._flush_history()
             self._census(births, deaths, marriages, divorces, migrations, infants, local)
             self.timings["history_and_census"] += time.perf_counter() - started
+            self.regulator.checkpoint(
+                self.year,
+                len(self.alive),
+                (self.year - self.config.start_year) % self.config.snapshot_interval == 0
+                or self.year == self.config.start_year + self.config.duration,
+            )
             if progress:
                 progress(self.year, len(self.alive))
         return self.summary()
@@ -1153,9 +1197,11 @@ class Engine:
         return {
             "start_year": self.config.start_year,
             "backend": self.config.backend,
-            "algorithm_version": "csr-soa-batched-v3"
+            "algorithm_version": (
+                "csr-soa-bounded-v4" if self.regulator.enabled else "csr-soa-batched-v3"
+            )
             if self.config.backend == "compiled"
-            else "reference-v1",
+            else ("reference-bounded-v2" if self.regulator.enabled else "reference-v1"),
             "settlement_count": len(self.settlements),
             "snapshot_interval": self.config.snapshot_interval,
             "phase_seconds": dict(self.timings),
@@ -1177,14 +1223,24 @@ class Engine:
             "allocated_person_bytes": self.data.nbytes,
             "target_population": self.config.target_population,
             "target_mode": self.config.target_mode,
+            "regulation": self.regulator.summary(),
             "target_status": (
-                "within_tolerance"
-                if abs(len(self.alive) / self.config.target_population - 1)
-                <= self.config.target_tolerance
-                else "outside_tolerance"
-            )
-            if self.config.target_population
-            else "not_requested",
+                "within_bounds"
+                if self.regulator.enabled
+                and self.config.initial_population
+                <= len(self.alive)
+                <= self.config.target_population
+                else "below_floor"
+                if self.regulator.enabled
+                else (
+                    "within_tolerance"
+                    if abs(len(self.alive) / self.config.target_population - 1)
+                    <= self.config.target_tolerance
+                    else "outside_tolerance"
+                )
+                if self.config.target_population
+                else "not_requested"
+            ),
             "target_relative_error": (len(self.alive) / self.config.target_population - 1)
             if self.config.target_population
             else None,
@@ -1231,65 +1287,6 @@ def generate(
         if staging.exists():
             raise FileExistsError(f"Previous incomplete run exists: {staging}")
     started = time.perf_counter()
-    calibration = None
-    if config.target_population and config.target_mode == "calibrate_founders":
-        sites = len(config.settlements) or config.virtual_settlements
-        # Tiny pilots over hundreds of sites distort the marriage market.
-        pilot_population = min(
-            config.target_population, max(config.calibration_population, min(100000, sites * 200))
-        )
-        initial = config.initial_population
-        iterations = []
-        for attempt in range(4):
-            if calibration_stage:
-                calibration_stage(attempt + 1, 4)
-            # Match capacity per founder at the proposed full scale. Capacity is soft
-            # demographic pressure, so a linear pilot with unscaled fixed sites is invalid.
-            real = config.model_copy(update={"initial_population": initial})
-            fraction = pilot_population / initial
-            pilot_sites = [
-                p.model_copy(update={"capacity": max(1, round(p.capacity * fraction))})
-                for p in virtual_map(real)
-            ]
-            pilot = config.model_copy(
-                update={
-                    "initial_population": pilot_population,
-                    "target_population": None,
-                    "settlements": pilot_sites,
-                    "capacity_mode": "fixed",
-                }
-            )
-            pilot_engine = Engine(pilot, rules=deepcopy(rules))
-            pilot_summary = pilot_engine.run(calibration_progress)
-            ratio = pilot_summary["population"] / pilot.initial_population
-            if ratio < 0.05:
-                raise ValueError(
-                    "Pilot population collapsed; revise demography/events before targeting"
-                )
-            proposed = max(2, round(config.target_population / ratio))
-            iterations.append(
-                {"estimated_initial": initial, "growth_ratio": ratio, "proposed_initial": proposed}
-            )
-            if proposed > 100_000_000:
-                raise ValueError("Calibrated founding population exceeds 100 million")
-            converged = abs(proposed - initial) / initial < 0.02
-            initial = proposed
-            if converged:
-                break
-        calibration = {
-            "pilot_initial": pilot.initial_population,
-            "pilot_final": pilot_summary["population"],
-            "growth_ratio": ratio,
-            "estimated_initial": initial,
-            "settlements": sites,
-            "founders_per_site": pilot_population / sites,
-            "density_warning": pilot_population / sites < 50,
-            "iterations": iterations,
-            "converged": converged,
-            "method": "density-matched-pilot-estimate",
-        }
-        config = config.model_copy(update={"initial_population": initial})
-        del pilot_engine
     settlements = virtual_map(config)
     activities = sorted({a for p in settlements for a in p.activities})
     if path is None:
@@ -1301,7 +1298,8 @@ def generate(
     try:
         engine = Engine(config, store, rules=rules)
         summary = engine.run(progress)
-        summary["calibration"] = calibration
+        summary["calibration"] = None
+        summary["simulation_runs"] = 1
         summary["rules"] = descriptors
         summary["simulation_seconds"] = time.perf_counter() - started
         store.finish(engine.data, summary, engine.n)

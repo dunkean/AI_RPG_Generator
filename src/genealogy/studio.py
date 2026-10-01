@@ -142,12 +142,10 @@ class Studio:
                 "year": config.start_year,
                 "start_year": config.start_year,
                 "end_year": config.start_year + config.duration,
-                "population": config.calibration_population
-                if config.target_population and config.target_mode == "calibrate_founders"
-                else config.initial_population,
+                "population": config.initial_population,
                 "progress": 0,
-                "phase": "Calibration · échantillon"
-                if config.target_population and config.target_mode == "calibrate_founders"
+                "phase": "Simulation annuelle · régulation dynamique"
+                if config.target_mode == "bounded" and config.target_population
                 else "Simulation annuelle",
             }
             self.worker = threading.Thread(target=self._run, args=(key, config), daemon=True)
@@ -163,38 +161,6 @@ class Studio:
 
     def _run(self, key, config):
         path = self.output_dir / f"world_{key}.sqlite"
-        pilot_weight = (
-            0.25 if config.target_population and config.target_mode == "calibrate_founders" else 0
-        )
-
-        calibration_pass, calibration_limit = 1, 4
-
-        def calibration_stage(attempt, limit):
-            nonlocal calibration_pass, calibration_limit
-            if self.cancel_event.is_set():
-                raise CancelledError("Génération annulée")
-            calibration_pass, calibration_limit = attempt, limit
-            with self.lock:
-                self.job.update(
-                    calibration_pass=attempt,
-                    calibration_limit=limit,
-                    phase=f"Calibration des fondateurs · essai {attempt}/{limit}",
-                    year=config.start_year,
-                    progress=pilot_weight * (attempt - 1) / limit,
-                )
-
-        def calibration_progress(year, count):
-            if self.cancel_event.is_set():
-                raise CancelledError("Génération annulée")
-            with self.lock:
-                self.job.update(
-                    year=year,
-                    population=count,
-                    phase=f"Calibration des fondateurs · essai {calibration_pass}/{calibration_limit}",
-                    progress=pilot_weight
-                    * (calibration_pass - 1 + (year - config.start_year) / config.duration)
-                    / calibration_limit,
-                )
 
         def progress(year, count):
             if self.cancel_event.is_set():
@@ -210,8 +176,7 @@ class Studio:
                     )
                     if year == config.start_year + config.duration
                     else "Simulation annuelle",
-                    progress=pilot_weight
-                    + (1 - pilot_weight) * (year - config.start_year) / config.duration,
+                    progress=(year - config.start_year) / config.duration,
                 )
 
         try:
@@ -219,8 +184,6 @@ class Studio:
                 config,
                 None if self.memory_only else path,
                 progress,
-                calibration_progress=calibration_progress,
-                calibration_stage=calibration_stage,
             )
             if self.memory_only:
                 archive, summary = summary, summary.summary

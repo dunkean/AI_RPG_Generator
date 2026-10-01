@@ -151,3 +151,23 @@ mobile, protection contre les doubles soumissions). Les empreintes couvrent auss
 une carte explicite à IDs non triés, crise, migrations et divorces renforcés.
 Les scénarios avec règles personnalisées, calibration et rétention du monde actif
 sont comparés au chemin SQLite de compatibilité.
+
+
+## Remplacement de la calibration par une régulation en un run
+
+À la demande de l'utilisateur, les pilotes sont supprimés. Les fondateurs restent
+fixes ; le plancher déclenche une natalité dynamique de récupération, et la cible
+est un plafond strict régulé par les décès. Les crises peuvent faire passer sous
+le plancher et leurs effets restent enregistrés. Sol a relu le contrôleur et a
+signalé qu'une hausse de natalité pendant une crise pourrait annuler une baisse
+partielle de fécondité : la compensation est donc suspendue pendant un événement
+nuisible, puis reprend après. La hausse est plafonnée et garde les contraintes
+biologiques. Le quota mortel conserve tous les décès naturels et ajoute seulement
+le nombre nécessaire au plafond, avec risques pondérés et dates exactes.
+
+Le CLI Opus 5.5 a été lancé pour cette nouvelle revue, mais a renvoyé 429 / quota
+hebdomadaire atteint, sans consommer de tokens de revue. Cette version n'est donc
+pas présentée comme relue par Opus. La validation principale couvre un run unique,
+plafond strict, mortalité de crise conservée, récupération biologique, déterminisme,
+compatibilité des anciens scénarios et l'explorateur. Les tests de la version
+précédente restent pertinents pour le moteur sans régulation.
