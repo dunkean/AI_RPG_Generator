@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .config import Scenario, Settlement
 from .politics import PoliticalTimeline
+from .reproduction import ReproductiveTraits
 from .schema import STORED_FIELDS, null_sentinel
 
 PERSON_COLUMNS = "id INTEGER PRIMARY KEY," + ",".join(
@@ -180,6 +181,14 @@ class Archive:
                 db.execute("SELECT value FROM metadata WHERE key='config'").fetchone()[0]
             )
             self.config = Scenario.model_validate(source)
+            self.reproductive_traits = (
+                ReproductiveTraits(self.config)
+                if json.loads(
+                    db.execute("SELECT value FROM metadata WHERE key='summary'").fetchone()[0]
+                ).get("reproductive_traits_version")
+                == 1
+                else None
+            )
             places = [
                 Settlement(**{k: row[k] for k in ("id", "name", "x", "y", "kind", "capacity")})
                 for row in db.execute("SELECT * FROM settlements ORDER BY id")
@@ -214,6 +223,8 @@ class Archive:
             if row is None:
                 raise KeyError(identity)
             result = dict(row)
+            if self.reproductive_traits is not None:
+                result.update(self.reproductive_traits.describe(result))
             result["founder"] = row["father"] is None and row["mother"] is None
             result["history_known_from"] = self.start_year if result["founder"] else row["birth"]
             result["annotations"] = {
@@ -230,6 +241,9 @@ class Archive:
                     (identity, identity),
                 )
             ]
+            if self.reproductive_traits is not None:
+                for child in result["children"]:
+                    child.update(self.reproductive_traits.describe(child))
             result["unions"] = [
                 dict(r)
                 for r in db.execute(
@@ -275,7 +289,10 @@ class Archive:
                             return {"people": rows, "truncated": True}
                         seen.add(row["id"])
                         upcoming.append(row["id"])
-                        rows.append({**dict(row), "generation": generation})
+                        item = dict(row)
+                        if self.reproductive_traits is not None:
+                            item.update(self.reproductive_traits.describe(item))
+                        rows.append({**item, "generation": generation})
                 frontier = upcoming
                 if not frontier:
                     break
@@ -301,13 +318,18 @@ class Archive:
         if not 1 <= limit <= 500:
             raise ValueError("limit must be 1..500")
         with closing(self.connect()) as db:
-            return [
+            rows = [
                 dict(r)
                 for r in db.execute(
                     "SELECT * FROM people WHERE place=? AND death IS NULL AND id>? ORDER BY id LIMIT ?",
                     (settlement, after, limit),
                 )
             ]
+
+            if self.reproductive_traits is not None:
+                for row in rows:
+                    row.update(self.reproductive_traits.describe(row))
+            return rows
 
     def map_at(self, year: int, race: int | None = None):
         if year not in self.saved_years:

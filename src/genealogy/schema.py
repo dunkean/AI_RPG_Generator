@@ -18,6 +18,7 @@ STORED_FIELDS = (
     ("race", "i2", False),
 )
 RUNTIME_FIELDS = (
+    ("reproduction_flags", "u1"),
     ("partner", "i4"),
     ("union", "i4"),
     ("last_birth", "i4"),

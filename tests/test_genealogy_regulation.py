@@ -15,6 +15,8 @@ def test_ceiling_is_hard_and_crisis_recovers_through_real_births():
         target_population=3600,
         years=80,
         snapshot_interval=1,
+        demography={"female_infertility_rate": 0, "male_infertility_rate": 0},
+        society={"childfree_rate": 0},
         events=[
             {
                 "name": "plague",

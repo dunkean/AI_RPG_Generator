@@ -36,7 +36,12 @@ settlement_types:
     minimum_count: 1
     capacity: 1200
     activities: {fishing: 5, trade: 3, craft: 2}
+demography:
+  # Lifetime shares, not annual risks; fictional configurable assumptions.
+  female_infertility_rate: 0.06
+  male_infertility_rate: 0.04
 society:
+  childfree_rate: 0.03
   divorce_rate: 0.001
   migration_rate: 0.012
   kinship_depth: 3

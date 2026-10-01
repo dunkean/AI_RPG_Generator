@@ -8,6 +8,9 @@ initial_population: 3000
 virtual_settlements: 25
 virtual_spacing: 20
 demography:
+  # Lifetime shares, not annual risks; fictional configurable assumptions.
+  female_infertility_rate: 0.06
+  male_infertility_rate: 0.04
   infant_mortality: 0.22
   child_mortality: 0.025
   adult_mortality: 0.009
@@ -19,6 +22,7 @@ demography:
   birth_spacing: 2
   maternal_mortality: 0.008
 society:
+  childfree_rate: 0.03
   marriage_min_age: 18
   divorce_rate: 0
   kinship_depth: 3

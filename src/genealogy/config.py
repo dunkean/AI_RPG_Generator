@@ -96,6 +96,8 @@ class Demography(Settings):
     male_mortality_factor: Positive = 1.1
     maternal_mortality: Probability = 0.008
     male_birth_probability: Probability = 0.512
+    female_infertility_rate: Probability = 0.06
+    male_infertility_rate: Probability = 0.04
     fertility_peak: Probability = 0.32
     fertility_peak_age: int = Field(default=27, ge=18, le=2000)
     fertility_width: Positive = 10
@@ -116,6 +118,7 @@ class Demography(Settings):
 
 
 class Society(Settings):
+    childfree_rate: Probability = 0.03
     marriage_rate: Probability = 0.30
     founder_match_participation: Probability = 0.85
     marriage_min_age: int = Field(default=18, ge=18, le=2000)

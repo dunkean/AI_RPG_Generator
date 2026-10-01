@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from .politics import PoliticalTimeline
+from .reproduction import ReproductiveTraits
 from .schema import STORED_FIELDS, null_sentinel
 
 REASONS = {"death": 1, "divorce": 2, "marriage": 3, "household": 4}
@@ -66,6 +67,7 @@ class MemoryArchive:
         self.path = Path("memory.world")
         self.created = time.time()
         self.config, self.settlements, self.activities = config, settlements, activities
+        self.reproductive_traits = ReproductiveTraits(config)
         self.start_year = config.start_year
         self.politics = PoliticalTimeline(config, settlements)
         self.saved_years, self.has_distributions = set(), True
@@ -207,6 +209,8 @@ class MemoryArchive:
         for name, _, nullable in STORED_FIELDS:
             value = int(self.data[name][identity])
             result[name] = None if nullable and value == null_sentinel(name) else value
+        if self.summary.get("reproductive_traits_version") == 1:
+            result.update(self.reproductive_traits.describe(result))
         return result
 
     def _lookup(self, key, column, value):

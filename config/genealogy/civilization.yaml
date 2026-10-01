@@ -30,7 +30,12 @@ nation_contacts:
     start_year: 1075
     marriage_factor: 0.15
     migration_factor: 0.4
+demography:
+  # Lifetime shares, not annual risks; fictional configurable assumptions.
+  female_infertility_rate: 0.06
+  male_infertility_rate: 0.04
 society:
+  childfree_rate: 0.03
   migration_rate: 0.01
   kinship_depth: 3
   matching_attempts: 12

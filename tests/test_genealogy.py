@@ -21,6 +21,8 @@ def scenario(**changes):
 
 def quiet_demography(**changes):
     return {
+        "female_infertility_rate": 0,
+        "male_infertility_rate": 0,
         "infant_mortality": 0,
         "child_mortality": 0,
         "adult_mortality": 0,
@@ -137,6 +139,8 @@ def test_exact_place_counts_allow_zero_shares_and_distinct_profiles_of_same_kind
 
 def couple(config):
     engine = Engine(config)
+    # Isolate birth/migration invariants from the lifetime reproduction states.
+    engine.data["reproduction_flags"][:2] = 0
     engine.year = config.start_year + 1
     d = engine.data
     d["sex"][:2] = [0, 1]

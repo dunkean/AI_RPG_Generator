@@ -24,7 +24,8 @@
     </header>
     <nav class="tabs" aria-label="Vues">
       <button id="tabConfig" class="active">01 · Configurer & générer</button
-      ><button id="tabExplore">02 · Explorer le monde</button>
+      ><button id="tabExplore">02 · Monde</button
+      ><button id="tabIndividual">03 · Individus & lignées</button>
     </nav>
     <div id="progressBox" hidden role="status">
       <div
@@ -46,10 +47,10 @@
         <div class="intro">
           <div>
             <div class="eyebrow">Un monde commence par ses habitants</div>
-            <h2>Composez votre simulation</h2>
+            <h2>Construire un monde</h2>
             <p>
-              Une graine, des lieux, des règles. Puis laissez vivre les
-              générations.
+              Un scénario reproductible. Éditez une rubrique, puis lancez le
+              calcul.
             </p>
           </div>
           <div class="row">
@@ -63,8 +64,30 @@
           </div>
         </div>
         <div class="configLayout">
-          <div class="stack">
-            <div class="card">
+          <nav class="configNav" aria-label="Rubriques de configuration">
+            <button data-config="start" class="active">
+              01 <span>Départ & carte</span
+              ><small id="count-start"></small></button
+            ><button data-config="places" class="">
+              02 <span>Types de lieux</span
+              ><small id="count-places"></small></button
+            ><button data-config="society" class="">
+              03 <span>Démographie</span
+              ><small id="count-society"></small></button
+            ><button data-config="races" class="">
+              04 <span>Peuples</span><small id="count-races"></small></button
+            ><button data-config="events" class="">
+              05 <span>Événements</span
+              ><small id="count-events"></small></button
+            ><button data-config="nations" class="">
+              06 <span>Nations & contacts</span
+              ><small id="count-nations"></small></button
+            ><button data-config="advanced" class="">
+              07 <span>JSON complet</span><small id="count-advanced"></small>
+            </button>
+          </nav>
+          <div class="configPanels">
+            <div class="card configPanel" id="config-start">
               <div class="head">
                 <h3>01 / Point de départ</h3>
                 <span class="tag">Reproductible</span>
@@ -111,7 +134,7 @@
                       Simulation libre · cible indicative
                     </option>
                     <option value="bounded">
-                      Plancher / plafond · un seul calcul
+                      Plancher / plafond · nécessite un maximum
                     </option>
                   </select>
                 </div>
@@ -183,7 +206,7 @@
               </div>
               <p class="note" id="mapNotice"></p>
             </div>
-            <div class="card">
+            <div class="card configPanel" id="config-places" hidden>
               <div class="head">
                 <h3>02 / Diversité des lieux</h3>
                 <button id="addPlace">+ Type de lieu</button>
@@ -209,19 +232,25 @@
                 </table>
               </div>
             </div>
-            <div class="card">
+            <div class="card configPanel" id="config-society" hidden>
               <details open>
                 <summary>03 / Démographie & société</summary>
                 <div class="formGrid" id="demographicFields"></div>
+                <div
+                  id="mortalityHint"
+                  class="mortalityHint"
+                  role="status"
+                ></div>
                 <p class="note">
                   Taux annuels entre 0 et 1. La fécondité concerne les femmes en
                   union, selon l'âge et l'espacement des naissances.
                 </p>
               </details>
             </div>
-            <div class="card">
+            <div class="card configPanel" id="config-races" hidden>
               <details open>
                 <summary>04 / Peuples & cycles de vie</summary>
+                <button id="addRace" class="icon">+ Peuple</button>
                 <p class="small">
                   Cellule vide : héritage des paramètres globaux. Les poids
                   locaux des lieux peuvent remplacer ces poids globaux.
@@ -236,6 +265,9 @@
                         <th>Âge maximal</th>
                         <th>Pic de fécondité</th>
                         <th>Espacement</th>
+                        <th>Infertilité ♀</th>
+                        <th>Infertilité ♂</th>
+                        <th></th>
                       </tr>
                     </thead>
                     <tbody id="raceProfiles"></tbody>
@@ -244,7 +276,7 @@
                 <div id="crossSummary" class="chips"></div>
               </details>
             </div>
-            <div class="card">
+            <div class="card configPanel" id="config-events" hidden>
               <div class="head">
                 <h3>05 / Crises & événements</h3>
                 <button id="addEvent">+ Événement</button>
@@ -271,7 +303,7 @@
                 </table>
               </div>
             </div>
-            <div class="card">
+            <div class="card configPanel" id="config-nations" hidden>
               <details open>
                 <summary>06 / Nations & frontières datées</summary>
                 <p class="small">
@@ -314,8 +346,8 @@
                 </div>
               </details>
             </div>
-            <div class="card">
-              <details id="advanced">
+            <div class="card configPanel" id="config-advanced" hidden>
+              <details id="advanced" open>
                 <summary>Configuration complète · JSON</summary>
                 <p class="small">
                   Cartes explicites, races, croisements, périodes et
@@ -380,7 +412,7 @@
                 Un seul calcul. La mortalité régule le plafond ; la natalité
                 favorise le retour au plancher. Les crises peuvent faire passer
                 la population sous le plancher. Le plafond n'est pas une cible à
-                atteindre.
+                atteindre. Sans maximum renseigné, la régulation est inactive.
               </p>
             </div>
           </aside>
@@ -390,12 +422,27 @@
         <div class="intro">
           <div>
             <div class="eyebrow" id="worldEyebrow"></div>
-            <h2>La mémoire d'une population</h2>
+            <h2>Le monde en mouvement</h2>
             <p id="worldSubtitle"></p>
           </div>
           <div class="row">
             <button id="reuseConfig">Reprendre ses paramètres</button>
             <form id="search" class="row">
+              <button
+                id="personBack"
+                type="button"
+                aria-label="Individu précédent"
+                disabled
+              >
+                ←</button
+              ><button
+                id="personForward"
+                type="button"
+                aria-label="Individu suivant dans l’historique"
+                disabled
+              >
+                →
+              </button>
               <label for="identity" class="small">Individu #</label
               ><input
                 id="identity"
@@ -407,145 +454,258 @@
             </form>
           </div>
         </div>
-        <div id="worldMetrics" class="metrics"></div>
-        <div class="exploreLayout">
-          <div class="stack">
-            <div class="card mapCard">
-              <div class="mapHead">
-                <div>
-                  <h3>Répartition & origines</h3>
-                  <span class="small"
-                    >Glisser pour déplacer · molette pour zoomer</span
-                  >
-                </div>
-                <div class="mapTools">
-                  <select id="raceFilter" aria-label="Peuple affiché"></select
-                  ><select id="mapLayer" aria-label="Couche de carte">
-                    <option value="population">Population</option>
-                    <option value="kind">Types de lieux</option>
-                    <option value="nations">Nations</option>
-                    <option value="growth">Croissance</option>
-                    <option value="flows">Déplacements</option>
-                  </select>
-                  <button id="zoomOut" aria-label="Dézoomer">−</button
-                  ><button id="zoomIn" aria-label="Zoomer">+</button
-                  ><button id="resetMap">Recentrer</button>
+        <div class="mapFooter">
+          <div
+            class="row"
+            style="justify-content: space-between; margin-bottom: 10px"
+          >
+            <label for="year" class="small">Recensement de fin d'année</label
+            ><b id="yearText"></b>
+          </div>
+          <div class="yearControls">
+            <button id="prevYear" aria-label="Recensement précédent">‹</button
+            ><button id="playYears" aria-label="Lire ou arrêter la chronologie">
+              ▶</button
+            ><input id="year" type="range" step="1" /><button
+              id="nextYear"
+              aria-label="Recensement suivant"
+            >
+              ›
+            </button>
+          </div>
+          <p id="yearStats" class="small" style="margin-top: 9px"></p>
+        </div>
+        <div id="globalView">
+          <div id="worldMetrics" class="metrics"></div>
+          <div class="globalOverview">
+            <div class="globalGeography">
+              <div id="globalMapDock">
+                <div class="card mapCard">
+                  <div class="mapHead">
+                    <div>
+                      <h3>Répartition & origines</h3>
+                      <span class="small"
+                        >Glisser pour déplacer · molette pour zoomer</span
+                      >
+                    </div>
+                    <div class="mapTools">
+                      <select
+                        id="raceFilter"
+                        aria-label="Peuple affiché"
+                      ></select
+                      ><select id="mapLayer" aria-label="Couche de carte">
+                        <option value="population">Population</option>
+                        <option value="kind">Types de lieux</option>
+                        <option value="nations">Nations</option>
+                        <option value="growth">Croissance</option>
+                        <option value="flows">Déplacements</option>
+                      </select>
+                      <button id="zoomOut" aria-label="Dézoomer">−</button
+                      ><button id="zoomIn" aria-label="Zoomer">+</button
+                      ><button id="resetMap">Recentrer</button>
+                    </div>
+                  </div>
+                  <canvas
+                    id="map"
+                    width="1200"
+                    height="750"
+                    role="img"
+                    aria-label="Carte interactive des lieux"
+                  ></canvas>
+                  <p id="mapHover" class="small" style="padding: 8px 22px"></p>
+                  <div id="mapLegend" class="mapLegend"></div>
                 </div>
               </div>
-              <canvas
-                id="map"
-                width="1200"
-                height="750"
-                role="img"
-                aria-label="Carte interactive des lieux"
-              ></canvas>
-              <p id="mapHover" class="small" style="padding: 8px 22px"></p>
-              <div id="mapLegend" class="mapLegend"></div>
-              <div class="mapFooter">
-                <div
-                  class="row"
-                  style="justify-content: space-between; margin-bottom: 10px"
-                >
-                  <label for="year" class="small"
-                    >Recensement de fin d'année</label
-                  ><b id="yearText"></b>
-                </div>
-                <input id="year" type="range" step="1" />
-                <p id="yearStats" class="small" style="margin-top: 9px"></p>
+              <div class="selectionBar">
+                <span id="globalSelection"
+                  >Choisissez un lieu sur la carte.</span
+                ><button id="openVillage">Explorer ses habitants →</button>
               </div>
             </div>
+            <div class="globalAnalytics">
+              <div class="card">
+                <div class="head">
+                  <div>
+                    <h3>Évolution démographique</h3>
+                    <p class="small">
+                      Survoler pour lire · cliquer pour synchroniser la carte
+                    </p>
+                  </div>
+                  <select id="chartMode" style="width: auto">
+                    <option value="population">Population</option>
+                    <option value="vital">Naissances & décès</option>
+                    <option value="movement">Unions & migrations</option>
+                  </select>
+                </div>
+                <div class="chartRange">
+                  <label
+                    >De
+                    <select
+                      id="chartFrom"
+                      aria-label="Début du graphique"
+                    ></select></label
+                  ><label
+                    >à
+                    <select
+                      id="chartTo"
+                      aria-label="Fin du graphique"
+                    ></select></label
+                  ><button id="resetChart">Toute la période</button>
+                </div>
+                <p id="chartReadout" class="small" role="status">
+                  Survoler le graphique pour lire un recensement.
+                </p>
+                <svg
+                  id="chart"
+                  viewBox="0 0 900 230"
+                  role="img"
+                  aria-label="Évolution démographique"
+                ></svg>
+                <div id="chartLegend" class="chartLegend"></div>
+              </div>
+              <div class="card">
+                <div class="head">
+                  <h3>Lieux les plus peuplés</h3>
+                  <span id="rankingYear" class="small"></span>
+                </div>
+                <div id="ranking" class="ranking"></div>
+              </div>
+            </div>
+          </div>
+          <div class="lowerGrid">
             <div class="card">
               <div class="head">
-                <div>
-                  <h3 id="placeTitle">Habitants</h3>
-                  <select
-                    id="placePicker"
-                    aria-label="Lieu à explorer"
-                  ></select>
-                  <p id="placeDetail" class="small"></p>
+                <h3>Pyramide des âges</h3>
+                <span id="distributionYear" class="small"></span>
+              </div>
+              <svg
+                id="ageChart"
+                role="img"
+                aria-label="Pyramide des âges"
+              ></svg>
+            </div>
+            <div class="card">
+              <h3>Structure de la population</h3>
+              <div id="composition"></div>
+            </div>
+          </div>
+          <div class="card mortalityCard">
+            <div class="head">
+              <h3>Âges au décès & survie des enfants</h3>
+              <span class="small"
+                >Ensemble de la simulation · âges en années entières</span
+              >
+            </div>
+            <div id="mortalityMetrics" class="mortalityMetrics"></div>
+            <div id="deathBands" class="deathBands"></div>
+            <p id="mortalityDetail" class="small"></p>
+          </div>
+        </div>
+        <div id="individualView" hidden>
+          <div class="individualLayout">
+            <aside class="localSidebar">
+              <div id="localMapDock"></div>
+              <div class="card residentsCard">
+                <div class="head">
+                  <div>
+                    <h3 id="placeTitle">Habitants</h3>
+                    <select
+                      id="placePicker"
+                      aria-label="Lieu à explorer"
+                    ></select>
+                    <p id="placeDetail" class="small"></p>
+                  </div>
+                  <button id="more" hidden>Suivants →</button>
                 </div>
-                <button id="more" hidden>Suivants →</button>
+                <div class="residentTools">
+                  <input
+                    id="residentSearch"
+                    placeholder="Filtrer les IDs chargés…"
+                    aria-label="Filtrer les habitants chargés"
+                  /><select id="residentSex" aria-label="Sexe des habitants">
+                    <option value="">Tous sexes</option>
+                    <option value="0">♂ Hommes</option>
+                    <option value="1">♀ Femmes</option></select
+                  ><select
+                    id="residentRace"
+                    aria-label="Peuple des habitants"
+                  ></select>
+                </div>
+                <div class="small" id="residentCount"></div>
+                <div id="residents" class="chips"></div>
               </div>
-              <div id="residents" class="chips"></div>
-            </div>
-          </div>
-          <aside class="card">
-            <div class="personHead">
-              <div class="eyebrow">Histoire individuelle</div>
-              <h2 id="personTitle">Choisir un individu</h2>
-              <p id="personTag" class="small"></p>
-            </div>
-            <div id="personFacts" class="facts"></div>
-            <p id="residence" class="small"></p>
-            <h3 style="margin-top: 20px">Parents</h3>
-            <div id="parents" class="chips"></div>
-            <h3 style="margin-top: 20px">Enfants</h3>
-            <div id="children" class="chips"></div>
-            <h3 style="margin-top: 23px">Chronologie</h3>
-            <div id="timeline" class="timeline"></div>
-          </aside>
-        </div>
-        <div class="lowerGrid">
-          <div class="card">
-            <div class="head">
-              <div>
-                <h3>Évolution démographique</h3>
-                <p class="small">Survoler un point pour lire ses valeurs</p>
+            </aside>
+            <div class="individualMain">
+              <div class="card personCard">
+                <div class="biography">
+                  <div class="personHead">
+                    <div class="eyebrow">Histoire individuelle</div>
+                    <h2 id="personTitle">Choisir un individu</h2>
+                    <p id="personTag" class="small"></p>
+                  </div>
+                  <div id="personFacts" class="facts"></div>
+                  <p id="residence" class="small"></p>
+                  <h3 style="margin-top: 20px">Parents</h3>
+                  <div id="parents" class="chips"></div>
+                  <h3 style="margin-top: 20px">Enfants</h3>
+                  <div id="children" class="chips"></div>
+                </div>
+                <div class="personHistory">
+                  <h3>
+                    Chronologie
+                    <button id="locatePerson" class="icon">
+                      ◎ Sur la carte
+                    </button>
+                  </h3>
+                  <div id="timeline" class="timeline"></div>
+                </div>
               </div>
-              <select id="chartMode" style="width: auto">
-                <option value="population">Population</option>
-                <option value="vital">Naissances & décès</option>
-                <option value="movement">Unions & migrations</option>
-              </select>
+              <div class="card treeCard">
+                <div class="head">
+                  <div>
+                    <h3>Arbre de filiation</h3>
+                    <p id="treeNote" class="small"></p>
+                  </div>
+                  <div class="row treeTools">
+                    <select id="direction" style="width: auto">
+                      <option value="ancestors">Ascendants</option>
+                      <option value="descendants">Descendants</option></select
+                    ><select
+                      id="depth"
+                      aria-label="Profondeur"
+                      style="width: auto"
+                    >
+                      <option value="2">2 générations</option>
+                      <option value="4" selected>4 générations</option>
+                      <option value="6">6 générations</option>
+                      <option value="8">8 générations</option>
+                      <option value="12">12 générations</option>
+                    </select>
+                    <button
+                      id="treeZoomOut"
+                      aria-label="Dézoomer la généalogie"
+                    >
+                      −</button
+                    ><span id="treeZoomLabel">100 %</span
+                    ><button id="treeZoomIn" aria-label="Zoomer la généalogie">
+                      +</button
+                    ><button id="treeFit">Ajuster</button>
+                  </div>
+                </div>
+                <div
+                  class="treeScroll"
+                  id="treeViewport"
+                  tabindex="0"
+                  aria-label="Généalogie : flèches pour déplacer, plus et moins pour zoomer"
+                >
+                  <svg
+                    id="tree"
+                    role="img"
+                    aria-label="Arbre familial cliquable"
+                  ></svg>
+                </div>
+              </div>
             </div>
-            <svg
-              id="chart"
-              viewBox="0 0 900 230"
-              role="img"
-              aria-label="Évolution démographique"
-            ></svg>
-            <div id="chartLegend" class="chartLegend"></div>
-          </div>
-          <div class="card">
-            <div class="head">
-              <h3>Lieux les plus peuplés</h3>
-              <span id="rankingYear" class="small"></span>
-            </div>
-            <div id="ranking" class="ranking"></div>
-          </div>
-        </div>
-        <div class="lowerGrid">
-          <div class="card">
-            <div class="head">
-              <h3>Pyramide des âges</h3>
-              <span id="distributionYear" class="small"></span>
-            </div>
-            <svg id="ageChart" role="img" aria-label="Pyramide des âges"></svg>
-          </div>
-          <div class="card">
-            <h3>Structure de la population</h3>
-            <div id="composition"></div>
-          </div>
-        </div>
-        <div class="card treeCard">
-          <div class="head">
-            <div>
-              <h3>Arbre de filiation</h3>
-              <p id="treeNote" class="small"></p>
-            </div>
-            <div class="row">
-              <select id="direction" style="width: auto">
-                <option value="ancestors">Ascendants</option>
-                <option value="descendants">Descendants</option></select
-              ><select id="depth" aria-label="Profondeur" style="width: auto">
-                <option value="2">2 générations</option>
-                <option value="4" selected>4 générations</option>
-                <option value="6">6 générations</option>
-              </select>
-            </div>
-          </div>
-          <div class="treeScroll">
-            <svg id="tree" aria-label="Arbre familial cliquable"></svg>
           </div>
         </div>
         <p id="diagnostics" class="footerNote"></p>

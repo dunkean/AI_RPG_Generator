@@ -52,11 +52,16 @@ def test_exact_pre_optimization_history(fantasy, digest):
         config = load_scenario(Path("config/genealogy/fantasy.yaml")).model_copy(
             update={"initial_population": 3000, "years": 60, "target_population": None}
         )
+    config.demography.female_infertility_rate = 0
+    config.demography.male_infertility_rate = 0
+    config.society.childfree_rate = 0
     sink = Trace()
     engine = Engine(config, sink)
     engine.run()
     result = hashlib.sha256()
     for name in engine.data.columns:
+        if name == "reproduction_flags":
+            continue  # New runtime byte; zero rates preserve all pre-feature life histories.
         result.update(engine.data[name][: engine.n].tobytes())
     result.update(json.dumps(sink.rows, sort_keys=True).encode())
     assert result.hexdigest() == digest
@@ -167,11 +172,16 @@ def test_shuffled_ids_keep_original_draw_order_and_event_history():
             ],
         }
     )
+    config.demography.female_infertility_rate = 0
+    config.demography.male_infertility_rate = 0
+    config.society.childfree_rate = 0
     trace = Trace()
     engine = Engine(config, trace)
     engine.run()
     digest = hashlib.sha256()
     for name in engine.data.columns:
+        if name == "reproduction_flags":
+            continue
         digest.update(engine.data[name][: engine.n].tobytes())
     digest.update(json.dumps(trace.rows, sort_keys=True).encode())
     assert digest.hexdigest() == "84b52f75f0ef21aaa61d6b8f0e6d18a9b5c2b11f2430b60c0ef2cbc2182ccf68"

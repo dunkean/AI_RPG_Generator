@@ -20,6 +20,7 @@ from .config import Demography, Scenario, Society, virtual_map
 from .events import EventBuffer
 from .politics import PoliticalTimeline
 from .regulation import PopulationRegulator
+from .reproduction import ReproductiveTraits, mortality_summary
 from .schema import DTYPE, NO_YEAR, PersonColumns
 from .store import Store
 
@@ -59,6 +60,7 @@ class DependentIndex:
 class Engine:
     def __init__(self, config: Scenario, store: Store | None = None, rules=()):
         self.config, self.store = config, store
+        self.reproductive_traits = ReproductiveTraits(config)
         self.rules = tuple(rules)
         self.society = config.society
         self.rng = np.random.default_rng(config.seed)
@@ -291,6 +293,7 @@ class Engine:
                     np.arange(len(survival)), len(group), p=survival / survival.sum()
                 )
                 self.data["birth"][group] = self.year - ages
+        self._assign_reproduction(ids)
         self.data["family"][ids] = ids
         status = np.array(self.society.status_weights)
         self.data["status"][ids] = self.rng.choice(len(status), len(ids), p=status / status.sum())
@@ -733,6 +736,11 @@ class Engine:
             hazards["capacity"],
         )
 
+    def _assign_reproduction(self, ids):
+        self.data["reproduction_flags"][ids] = self.reproductive_traits.flags(
+            ids, self.data["sex"][ids], self.data["race"][ids], self.data["birth"][ids]
+        )
+
     def _births(self):
         d = self.data
         ids = self.alive
@@ -761,6 +769,13 @@ class Engine:
                 & (ages <= self.race_fertility_max[races])
                 & (self.year - d["last_birth"][ids] >= self.race_birth_spacing[races])
             ]
+        # Both partners have stable lifetime states. Regulation may increase a
+        # birth probability, but never override infertility or voluntary childlessness.
+        partners = d["partner"][fertile]
+        fertile = fertile[
+            (d["reproduction_flags"][fertile] == 0)
+            & (d["reproduction_flags"][partners] == 0)
+        ]
         ages = self.year - d["birth"][fertile]
         _, _, factor, _, capacity_factor = self._events(fertile, "births")
         counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
@@ -833,6 +848,7 @@ class Engine:
         d["sex"][babies] = (
             self.rng.random(len(babies)) >= self.race_male_probability[d["race"][babies]]
         )
+        self._assign_reproduction(babies)
         d["place"][babies] = d["birth_place"][babies] = d["place"][mothers]
         d["place_slot"][babies] = d["place_slot"][mothers]
         d["family"][babies] = d["family"][fathers]
@@ -1191,10 +1207,13 @@ class Engine:
 
     def summary(self):
         births = sum(row[2] for row in self.rows)
-        dead = self.data["death"][: self.n] != NO_YEAR
-        ages = self.data["death"][: self.n][dead] - self.data["birth"][: self.n][dead]
+        mortality = mortality_summary(
+            self.data, self.n, self.config.initial_population, self.year
+        )
         marriages = sum(row[4] for row in self.rows)
         return {
+            "reproductive_traits_version": 1,
+            "mortality": mortality,
             "start_year": self.config.start_year,
             "backend": self.config.backend,
             "algorithm_version": (
@@ -1210,12 +1229,12 @@ class Engine:
             "population": len(self.alive),
             "people_ever": self.n,
             "births": births,
-            "deaths": int(dead.sum()),
+            "deaths": mortality["observed_deaths"],
             "marriages": marriages,
             "divorces": sum(row[5] for row in self.rows),
             "migrations": sum(row[6] for row in self.rows),
             "birth_year_mortality": sum(row[7] for row in self.rows) / max(births, 1),
-            "mean_observed_age_at_death": float(ages.mean()) if len(ages) else None,
+            "mean_observed_age_at_death": mortality["mean_age_at_death"],
             "local_marriage_fraction": sum(row[13] for row in self.rows) / max(marriages, 1),
             "kinship_checks": self.kin_checks,
             "kinship_rejections": self.kin_rejections,

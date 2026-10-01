@@ -171,3 +171,22 @@ pas présentée comme relue par Opus. La validation principale couvre un run uni
 plafond strict, mortalité de crise conservée, récupération biologique, déterminisme,
 compatibilité des anciens scénarios et l'explorateur. Les tests de la version
 précédente restent pertinents pour le moteur sans régulation.
+
+
+## Interface compacte et états reproductifs permanents
+
+Sol a relu la séparation des vues et les nouveaux états reproductifs. Il a
+confirmé le filtrage des deux partenaires avant la régulation, la reconstruction
+conditionnée par version, et la séparation des deux proportions de mortalité.
+Ses remarques ont conduit à éviter un double scan des morts et à rendre explicite
+que la régulation est inactive sans maximum renseigné. Le suivi jusqu'au
+15e anniversaire est un choix conservateur documenté pour les cohortes d'enfants.
+
+Validation locale : 257 tests Python passés après l'ajout de ces règles ; parcours
+Edge headless de la configuration et de l'exploration, puis parcours ciblé de
+l'édition des listes, graphiques liés à la carte, filtres, navigation familiale,
+zoom/déplacement/cadrage et largeur mobile. Captures inspectées localement ;
+aucune production n'est versionnée. Aucune pipeline CI/CD ajoutée. À la demande
+de l'utilisateur, les vérifications ultérieures restent ciblées et proportionnées
+à ce prototype personnel. Opus n'a pas relu cette modification (quota précédent
+épuisé) ; aucune revue Opus n'est revendiquée.

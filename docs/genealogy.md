@@ -675,3 +675,70 @@ au-dessus de 3 000 et respect du plafond sur 80 ans. Un test de 100 000 fondateu
 500 lieux, plafond 105 000 et durée 100 ans a pris 4,13 s en RAM, un seul run,
 sans franchissement du plancher ni modification des fondateurs. Ces scénarios
 ne prouvent pas la performance sur 50 millions / 1 000 ans.
+
+
+## Atelier : configuration, monde et individus
+
+Le lanceur `explore_genealogy.cmd` ouvre le serveur sur `http://127.0.0.1:8771`.
+La configuration se parcourt par sept rubriques compactes : départ/carte, types
+de lieux, démographie, peuples, événements, nations/contacts et JSON. Les activités
+se modifient par nom et poids, avec ajout/suppression de lignes. Les peuples sont
+éditables ; leur renommage met à jour les références. Une suppression référencée
+est refusée avec une explication. Les contacts proposent les noms des nations.
+L'édition JSON conserve la protection appliquer/annuler et la validation du scénario.
+
+L'onglet Monde réunit carte, statistiques et graphiques. Survoler un recensement
+montre ses valeurs ; cliquer affiche sa carte. Une plage de dates restreint le
+graphique aux recensements conservés. La lecture automatique, les flèches et
+le curseur parcourent les mêmes recensements, sans interpoler de données annuelles.
+Le panneau de mortalité couvre toute la simulation, pas uniquement la date affichée.
+
+L'onglet Individus conserve la carte, la date et le lieu sélectionnés. Les listes
+pagées de résidents au **dernier recensement** distinguent sexe et peuple. Leurs
+filtres portent explicitement sur les habitants déjà chargés. Les parents, enfants,
+unions, divorces et migrations ouvrent les personnes liées ; une date de chronologie
+synchronise la carte avec le recensement conservé le plus proche. Les flèches de la
+recherche permettent de revenir aux individus consultés. Le lieu de résidence ou
+de naissance peut être recentré. L'arbre déduplique les ancêtres communs, rapproche
+les branches et garde un espacement minimal. Molette/boutons : zoom ; glisser/flèches :
+déplacement ; Ajuster/Home : cadrage ; Entrée/Espace sur un nœud : ouvrir sa fiche.
+
+## Infertilité, choix sans enfant et mortalité
+
+Trois probabilités configurables représentent des **parts à vie**, et non des
+risques annuels : `demography.female_infertility_rate` (défaut 0,06),
+`demography.male_infertility_rate` (0,04) et `society.childfree_rate` (0,03).
+Ces valeurs sont des hypothèses modifiables du prototype, pas des prévalences
+cliniques ou historiques validées. Les taux d'infertilité peuvent être surchargés
+par peuple ; les trois paramètres peuvent évoluer par période.
+
+Deux canaux de hash indépendants fixent les états par graine et identifiant :
+infertilité biologique permanente et choix permanent de ne pas procréer. Ils
+peuvent coexister. Les paramètres effectifs à la naissance sont employés ; les
+fondateurs reçoivent ceux du début de simulation, périodes antérieures comprises.
+Les états ne changent pas lors d'une migration ou d'un remariage. Les deux
+partenaires doivent être fertiles et souhaiter procréer pour qu'une naissance
+soit possible ; la régulation ne contourne jamais cette contrainte. D'autres
+raisons peuvent conduire à une absence d'enfants : union absente, hasard, âge,
+décès précoce ou événements. Le projet parental affiché ne promet pas de naissance.
+
+Le calcul ajoute un seul octet temporaire par personne (59 octets de colonnes
+runtime). Les états sont reconstruits lors de l'exploration : les champs
+historiques binaires restent à 38 octets, sans nouvelle colonne SQLite. La version
+`reproductive_traits_version=1` distingue les nouveaux mondes ; les anciennes
+archives ne reçoivent pas d'états inventés. Les graines produisent donc une nouvelle
+histoire lorsque ces probabilités non nulles sont utilisées. Les tests de
+compatibilité historiques désactivent explicitement ces nouveaux paramètres.
+
+La rubrique Démographie affiche une indication théorique d'âge moyen et médian
+au décès et de mortalité avant 15 ans. Elle utilise le modèle global par sexe,
+hors événements, mortalité maternelle, régulation et surcharges des peuples.
+L'âge maximal n'est pas l'espérance de vie.
+
+Le panneau Monde et les fiches affichent les décès effectivement simulés : moyenne,
+médiane, tranches d'âge et proportion des décès avant 15 ans. Le risque de mourir
+avant 15 ans parmi les naissances utilise uniquement celles suivies jusqu'au
+15e anniversaire : fondateurs et cohortes récentes sont exclus. Une absence de
+cohorte complète donne une valeur inconnue, jamais 0 %. Le calcul agrège les
+colonnes par blocs d'un million et un petit histogramme, sans trier tous les morts.
+Ces moyennes observées ne sont pas une estimation d'espérance de vie.

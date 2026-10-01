@@ -14,7 +14,7 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
     }),
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8765");
+  await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8771");
   await page.waitForFunction(
     () => document.querySelector("#treeNote").textContent,
   );
@@ -28,6 +28,7 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
     fullPage: true,
   });
   await page.click("#tabConfig");
+  await page.click('[data-config="start"]');
   await page.selectOption("#preset", "blank");
   await page.fill("#seed", "9876");
   await page.fill("#founders", "10000");
@@ -52,10 +53,12 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
   );
   await page.selectOption("#chartMode", "vital");
   await page.click("#zoomIn");
+  await page.click("#tabIndividual");
   await page.selectOption("#direction", "descendants");
   await page.click("#reuseConfig");
   await page.selectOption("#preset", "current");
   assert.equal(await page.locator("#seed").inputValue(), "9876");
+  await page.click('[data-config="events"]');
   await page.click("#addEvent");
   const idInput = page
     .locator("#eventProfiles tr")
@@ -72,8 +75,9 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
     fetch("/api/job").then((r) => r.json()),
   );
   assert.equal(before.id, after.id);
+  await page.click('[data-config="start"]');
   await page.selectOption("#preset", "blank");
-  await page.locator("#advanced summary").click();
+  await page.click('[data-config="advanced"]');
   const json = JSON.parse(await page.locator("#configJson").inputValue());
   json.seed = 123456;
   await page.fill("#configJson", JSON.stringify(json, null, 2));
@@ -84,7 +88,8 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
   );
   assert.equal(await page.locator("#seed").inputValue(), "123456");
   assert.equal(await page.locator("#seed").isDisabled(), false);
-  const race = page.locator("#raceProfiles tr").first().locator("input").nth(1);
+  await page.click('[data-config="races"]');
+  const race = page.locator("#raceProfiles tr").first().locator("input").nth(2);
   await race.fill("120");
   await race.press("Tab");
   await race.fill("");
@@ -123,6 +128,7 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
       migration_factor: 0.5,
     },
   ];
+  await page.click('[data-config="advanced"]');
   await page.fill("#configJson", JSON.stringify(political));
   await page.click("#applyJson");
   await page.waitForFunction(
@@ -162,6 +168,7 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
     fullPage: true,
   });
   await page.click("#tabConfig");
+  await page.click('[data-config="start"]');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: "output/genealogy/screenshots/config-mobile-final.png",

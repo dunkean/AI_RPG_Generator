@@ -78,6 +78,7 @@ function checkForm() {
     "#configView input:not([type=file])",
   )) {
     if (!i.checkValidity()) {
+      configTab(i.closest(".configPanel").id.replace("config-", ""));
       i.reportValidity();
       throw Error("Corrigez le champ invalide avant de générer ou exporter.");
     }
@@ -101,12 +102,45 @@ let presets,
   view = { x: 0, y: 0, w: 800, h: 500 },
   pollTimer;
 
+let activeTab = "config";
 function tab(which) {
+  activeTab = which;
+  document.querySelector("#exploreView h2").textContent =
+    which === "individual" ? "Habitants & lignées" : "Le monde en mouvement";
   $("configView").hidden = which !== "config";
-  $("exploreView").hidden = which !== "explore";
-  $("tabConfig").classList.toggle("active", which === "config");
-  $("tabExplore").classList.toggle("active", which === "explore");
+  $("exploreView").hidden = which === "config";
+  $("globalView").hidden = which !== "explore";
+  $("individualView").hidden = which !== "individual";
+  for (const [id, key] of [
+    ["tabConfig", "config"],
+    ["tabExplore", "explore"],
+    ["tabIndividual", "individual"],
+  ]) {
+    $(id).classList.toggle("active", which === key);
+    $(id).setAttribute("aria-current", which === key ? "page" : "false");
+  }
+  const dock = which === "individual" ? $("localMapDock") : $("globalMapDock");
+  dock.append(document.querySelector(".mapCard"));
+  requestAnimationFrame(() => {
+    resizeMap();
+    paintMap();
+    if (world && which === "explore") chart();
+    if (treeAutoFit) fitTree();
+    else applyTreeView();
+  });
 }
+function configTab(key) {
+  for (const b of document.querySelectorAll("[data-config]")) {
+    b.classList.toggle("active", b.dataset.config === key);
+    b.setAttribute("aria-current", b.dataset.config === key ? "page" : "false");
+  }
+  for (const panel of document.querySelectorAll(".configPanel"))
+    panel.hidden = panel.id !== "config-" + key;
+}
+for (const b of document.querySelectorAll("[data-config]"))
+  b.onclick = () => configTab(b.dataset.config);
+$("tabIndividual").onclick = () => tab("individual");
+$("openVillage").onclick = () => tab("individual");
 
 const basics = {
   seed: "seed",
@@ -125,6 +159,9 @@ const basics = {
 };
 
 const demographic = [
+  ["demography", "female_infertility_rate", "Infertilité · femmes", 0.01],
+  ["demography", "male_infertility_rate", "Infertilité · hommes", 0.01],
+  ["society", "childfree_rate", "Choix de ne pas avoir d’enfants", 0.01],
   ["demography", "fertility_peak", "Pic de fécondité", 0.01],
   ["demography", "birth_spacing", "Espacement des naissances · ans", 1],
   ["demography", "infant_mortality", "Mortalité infantile", 0.01],
@@ -169,6 +206,10 @@ function inputCell(
     }
     syncPreview();
   });
+  const heading = row.closest("table")?.querySelectorAll("th")[
+    row.children.length
+  ]?.textContent;
+  i.setAttribute("aria-label", heading || "Valeur de la ligne");
   td.append(i);
   row.append(td);
 }
@@ -186,27 +227,146 @@ function removeCell(row, list, index) {
   row.append(td);
 }
 
-function weights(value) {
-  const result = {};
-  for (const entry of value.split(",")) {
-    const [key, weight, ...rest] = entry.split(":");
-    if (
-      !key?.trim() ||
-      !weight?.trim() ||
-      rest.length ||
-      !Number.isFinite(Number(weight))
-    )
-      throw Error("Activités : utiliser agriculture: 9, craft: 1");
-    result[key.trim()] = Number(weight);
+function selectCell(row, value, choices, update) {
+  const td = el("td"),
+    select = el("select");
+  for (const name of new Set([value, ...choices])) {
+    const option = el("option", name);
+    option.value = name;
+    select.append(option);
   }
-  return result;
+  select.value = value;
+  select.onchange = () => {
+    update(select.value);
+    syncPreview();
+  };
+  td.append(select);
+  row.append(td);
 }
-
+function activityCell(row, profile) {
+  const td = el("td"),
+    details = el("details", "", "weightEditor"),
+    summary = el("summary");
+  details.append(summary);
+  td.append(details);
+  row.append(td);
+  function render() {
+    summary.textContent = Object.keys(profile.activities).length + " activités";
+    details
+      .querySelectorAll(".weightRow, .addWeight")
+      .forEach((e) => e.remove());
+    for (const [key, value] of Object.entries(profile.activities)) {
+      const line = el("div", "", "weightRow"),
+        name = el("input"),
+        weight = el("input"),
+        remove = el("button", "×", "icon");
+      name.value = key;
+      name.setAttribute("aria-label", "Activité");
+      weight.type = "number";
+      weight.min = 0;
+      weight.step = "any";
+      weight.required = true;
+      weight.value = value;
+      weight.setAttribute("aria-label", "Poids de l’activité");
+      name.onchange = safely(() => {
+        const next = name.value.trim();
+        if (!next || (next !== key && next in profile.activities)) {
+          name.setCustomValidity("Nom unique et non vide requis");
+          throw Error("Activité : nom unique et non vide requis.");
+        }
+        name.setCustomValidity("");
+        profile.activities[next] = profile.activities[key];
+        if (next !== key) delete profile.activities[key];
+        render();
+        syncPreview();
+      });
+      weight.onchange = () => {
+        profile.activities[key] = Number(weight.value);
+        syncPreview();
+      };
+      remove.title = "Supprimer l’activité";
+      remove.onclick = () => {
+        delete profile.activities[key];
+        render();
+        syncPreview();
+      };
+      line.append(name, weight, remove);
+      details.append(line);
+    }
+    const add = el("button", "+ Activité", "addWeight icon");
+    add.onclick = () => {
+      let i = 1;
+      while ("activité_" + i in profile.activities) i++;
+      profile.activities["activité_" + i] = 1;
+      render();
+      syncPreview();
+    };
+    details.append(add);
+  }
+  render();
+}
+function renameRace(race, next) {
+  next = next.trim();
+  if (!next || config.races.some((r) => r !== race && r.name === next))
+    throw Error("Le nom du peuple doit être unique et non vide.");
+  const old = race.name;
+  for (const c of config.crossbreeding) {
+    c.parents = c.parents.map((n) => (n === old ? next : n));
+    if (old in c.offspring) {
+      c.offspring[next] = c.offspring[old];
+      delete c.offspring[old];
+    }
+  }
+  for (const item of [...config.settlements, ...config.settlement_types]) {
+    if (old in (item.races || {})) {
+      item.races[next] = item.races[old];
+      delete item.races[old];
+    }
+  }
+  for (const event of config.events)
+    event.races = event.races.map((n) => (n === old ? next : n));
+  race.name = next;
+  renderCrossSummary();
+}
+function renderCrossSummary() {
+  $("crossSummary").replaceChildren(
+    ...config.crossbreeding.map((r) =>
+      el(
+        "span",
+        r.parents.join(" × ") +
+          " → " +
+          Object.keys(r.offspring).join(", ") +
+          " · affinité " +
+          r.marriage_affinity,
+        "tag",
+      ),
+    ),
+  );
+}
 function renderProfiles() {
   $("nationProfiles").replaceChildren();
   config.nations.forEach((n, index) => {
     const row = el("tr");
-    inputCell(row, n.name, (v) => (n.name = v), { type: "text", wide: true });
+    inputCell(
+      row,
+      n.name,
+      (v) => {
+        const next = v.trim(),
+          old = n.name;
+        if (
+          !next ||
+          config.nations.some((item) => item !== n && item.name === next)
+        )
+          throw Error("Nom de nation unique et non vide requis.");
+        for (const contact of config.nation_contacts)
+          contact.nations = contact.nations.map((name) =>
+            name === old ? next : name,
+          );
+        n.name = next;
+        renderProfiles();
+      },
+      { type: "text", wide: true },
+    );
     inputCell(row, n.founded, (v) => (n.founded = v));
     inputCell(row, n.dissolved, (v) => (n.dissolved = v), { nullable: true });
     inputCell(row, n.capital, (v) => (n.capital = v), { nullable: true });
@@ -217,10 +377,12 @@ function renderProfiles() {
   config.nation_contacts.forEach((n, index) => {
     const row = el("tr");
     for (let i = 0; i < 2; i++)
-      inputCell(row, n.nations[i], (v) => (n.nations[i] = v), {
-        type: "text",
-        wide: true,
-      });
+      selectCell(
+        row,
+        n.nations[i],
+        config.nations.map((n) => n.name),
+        (v) => (n.nations[i] = v),
+      );
     inputCell(row, n.start_year, (v) => (n.start_year = v));
     inputCell(row, n.end_year, (v) => (n.end_year = v), { nullable: true });
     for (const key of ["marriage_factor", "migration_factor"])
@@ -239,24 +401,26 @@ function renderProfiles() {
       "initial_weight",
     ])
       inputCell(row, p[field], (v) => (p[field] = v));
-    inputCell(
-      row,
-      Object.entries(p.activities)
-        .map(([k, v]) => k + ": " + v)
-        .join(", "),
-      (v) => (p.activities = weights(v)),
-      { type: "text", wide: true },
-    );
+    activityCell(row, p);
     removeCell(row, config.settlement_types, index);
     $("placeProfiles").append(row);
   });
 
   $("raceProfiles").replaceChildren();
-  config.races.forEach((r) => {
+  config.races.forEach((r, index) => {
     const row = document.createElement("tr");
-    row.append(el("td", r.name));
+    inputCell(row, r.name, (v) => renameRace(r, v), {
+      type: "text",
+      wide: true,
+    });
     inputCell(row, r.initial_weight, (v) => (r.initial_weight = v));
-    for (const field of ["max_age", "fertility_peak", "birth_spacing"])
+    for (const field of [
+      "max_age",
+      "fertility_peak",
+      "birth_spacing",
+      "female_infertility_rate",
+      "male_infertility_rate",
+    ])
       inputCell(
         row,
         r.demography[field],
@@ -266,22 +430,34 @@ function renderProfiles() {
         },
         { nullable: true, placeholder: "Hérite : " + config.demography[field] },
       );
+    const td = el("td"),
+      remove = el("button", "×", "icon");
+    remove.title = "Supprimer le peuple";
+    remove.onclick = safely(() => {
+      if (config.races.length === 1)
+        throw Error("Conservez au moins un peuple.");
+      if (
+        config.crossbreeding.some(
+          (c) => c.parents.includes(r.name) || r.name in c.offspring,
+        ) ||
+        [...config.settlements, ...config.settlement_types].some(
+          (p) => r.name in (p.races || {}),
+        ) ||
+        config.events.some((e) => e.races.includes(r.name))
+      )
+        throw Error(
+          "Ce peuple est référencé dans des croisements, lieux ou événements. Retirez ces références dans le JSON avant de le supprimer.",
+        );
+      config.races.splice(index, 1);
+      renderProfiles();
+      syncPreview();
+    });
+    td.append(remove);
+    row.append(td);
     $("raceProfiles").append(row);
   });
 
-  $("crossSummary").replaceChildren(
-    ...config.crossbreeding.map((r) =>
-      el(
-        "span",
-        r.parents.join(" × ") +
-          " → " +
-          Object.keys(r.offspring).join(", ") +
-          " · affinité " +
-          r.marriage_affinity,
-        "tag",
-      ),
-    ),
-  );
+  renderCrossSummary();
 
   $("eventProfiles").replaceChildren();
   config.events.forEach((e, index) => {
@@ -334,6 +510,22 @@ function populate(source) {
       renderProfiles();
       syncPreview();
     };
+    if (key.includes("infertility") || key === "childfree_rate") {
+      i.min = 0;
+      i.max = 1;
+      i.title =
+        "Part des individus recevant cet état à vie, de 0 à 1. Ce n’est pas un taux annuel. Les deux partenaires doivent pouvoir et vouloir procréer.";
+      wrap.append(el("small", "Part à vie · 0 à 1", "small"));
+    }
+    if (key === "infant_mortality")
+      i.title =
+        "Probabilité de décès durant l’année de naissance. Voir l’indication de survie ci-dessous.";
+    if (key === "child_mortality")
+      i.title =
+        "Probabilité annuelle après l’année de naissance, jusqu’à l’âge enfant maximal configuré.";
+    if (key === "adult_mortality")
+      i.title =
+        "Risque annuel de base, augmenté avec l’âge par le modèle de vieillissement.";
     wrap.append(l, i);
     $("demographicFields").append(wrap);
   }
@@ -343,7 +535,7 @@ function populate(source) {
 
 function setJsonDirty(flag) {
   for (const e of document.querySelectorAll(
-    "#configView input:not([type=file]),#configView select,#configView .icon,#addPlace,#addEvent",
+    "#configView input:not([type=file]),#configView select,#configView .icon,#configView .addWeight,#addPlace,#addEvent,#addRace,#addNation,#addContact",
   ))
     e.disabled = flag;
   if (flag)
@@ -354,6 +546,24 @@ $("configJson").oninput = () => setJsonDirty(true);
 $("discardJson").onclick = () => syncPreview();
 function syncPreview() {
   setJsonDirty(false);
+  renderMortalityHint();
+  for (const [key, list] of [
+    ["places", config.settlement_types],
+    ["races", config.races],
+    ["events", config.events],
+    ["nations", config.nations],
+  ])
+    $("count-" + key).textContent = list.length;
+  for (const table of document.querySelectorAll(".configPanel table"))
+    for (const row of table.querySelectorAll("tbody tr"))
+      [...row.children].forEach((cell, index) =>
+        cell
+          .querySelector("input,select")
+          ?.setAttribute(
+            "aria-label",
+            table.querySelectorAll("th")[index]?.textContent || "Valeur",
+          ),
+      );
   const years = config.years ?? config.generations * config.generation_years;
   $("previewYear").min = config.start_year;
   $("previewYear").max = config.start_year + years;
@@ -380,7 +590,7 @@ function syncPreview() {
     ? (config.target_mode === "report"
         ? "Fondateurs fixés · cible indicative "
         : "Plafond · un seul calcul · ") + fmt(config.target_population)
-    : "Sans population cible";
+    : "Sans plafond · régulation inactive";
   $("mapNotice").textContent = config.settlements.length
     ? "Carte explicite : nombre virtuel et profils ignorés. Modifier la carte dans le JSON."
     : "Carte virtuelle. Distances dans votre unité ; une génération est une durée.";
@@ -419,9 +629,20 @@ $("randomSeed").onclick = () => {
   $("seed").onchange();
 };
 
+$("addRace").onclick = () => {
+  let name = "peuple_" + (config.races.length + 1);
+  while (config.races.some((r) => r.name === name)) name += "_";
+  config.races.push({ name, initial_weight: 1, demography: {}, metadata: {} });
+  renderProfiles();
+  syncPreview();
+};
 $("addPlace").onclick = () => {
+  let kind = "village",
+    i = 2;
+  while (config.settlement_types.some((p) => p.kind === kind))
+    kind = "village_" + i++;
   config.settlement_types.push({
-    kind: "village",
+    kind,
     share: 10,
     minimum_count: 0,
     capacity: 600,
@@ -532,6 +753,7 @@ async function poll() {
   $("generate").disabled = generationSubmitting || status.state === "running";
   $("cancelGeneration").hidden = status.state !== "running";
   $("progressBox").hidden = status.state === "idle";
+  $("progressBox").dataset.state = status.state;
   $("progress").value = status.progress ?? 0;
   if (status.state === "running") {
     const phase = status.phase;
@@ -603,6 +825,7 @@ $("refreshWorld").onclick = safely(async () => {
   tab("explore");
 });
 $("reuseConfig").onclick = safely(async () => {
+  configTab("start");
   populate(await api("config"));
   tab("config");
 });
@@ -635,13 +858,49 @@ const kindLabels = {
 const kindLabel = (k) => kindLabels[k] ?? k.replaceAll("_", " "),
   kindColor = (k) => kindColors[k] ?? "#719896";
 
+const racePalette = [
+  "#9a653b",
+  "#697cb7",
+  "#4d937b",
+  "#a76999",
+  "#ae9c40",
+  "#468fa1",
+];
+const raceColor = (id) => racePalette[(id ?? 0) % racePalette.length];
 function personButton(p) {
-  const b = el("button", "#" + p.id + " · " + (p.birth ?? ""), "chip");
-  b.onclick = safely(() => selectPerson(p.id));
+  const b = el("button", "", "chip personChip");
+  b.dataset.person = p.id;
+  if (p.sex !== undefined) b.dataset.sex = p.sex;
+  if (p.race !== undefined) b.dataset.race = p.race;
+  b.style.setProperty("--race-color", raceColor(p.race));
+  b.classList.toggle("selected", p.id === person?.id);
+  b.append(
+    el("span", p.sex === undefined ? "·" : p.sex ? "♀" : "♂", "sexBadge"),
+    el("b", "#" + p.id),
+  );
+  if (p.race !== undefined) b.append(el("span", raceName(p.race), "raceBadge"));
+  if (p.birth !== undefined)
+    b.append(
+      el(
+        "small",
+        p.birth +
+          (p.death !== undefined && p.death !== null ? "–" + p.death : ""),
+      ),
+    );
+  b.title =
+    "Ouvrir l’individu #" +
+    p.id +
+    (p.birth !== undefined ? " · né en " + p.birth : "");
+  b.onclick = safely(async () => {
+    tab("individual");
+    await selectPerson(p.id);
+  });
   return b;
 }
 
+let mapAutoFit = true;
 function setupMap() {
+  mapAutoFit = true;
   const xs = world.settlements.map((p) => p.x),
     ys = world.settlements.map((p) => p.y),
     xmin = Math.min(...xs),
@@ -657,7 +916,7 @@ function setupMap() {
   );
   mapCells = voronoiCells([...coordinates.values()], [0, 0, 800, 500]);
   view = { x: 0, y: 0, w: 800, h: 500 };
-  applyView();
+  resetMapView();
 }
 
 let mapCells = [],
@@ -751,12 +1010,54 @@ async function refreshPreview() {
     $("previewStatus").textContent = "Aperçu invalide : " + e.message;
   }
 }
-function applyView() {
+function mapAspect() {
+  const box = $("map").getBoundingClientRect();
+  return box.width && box.height ? box.width / box.height : 1.6;
+}
+function resizeMap() {
+  if (!world || $("map").getBoundingClientRect().width === 0) return;
+  if (mapAutoFit) {
+    resetMapView();
+    return;
+  }
+  const centerY = view.y + view.h / 2;
+  view.h = view.w / mapAspect();
+  view.y = centerY - view.h / 2;
   paintMap();
 }
+new ResizeObserver(resizeMap).observe($("map"));
+function applyView() {
+  resizeMap();
+  paintMap();
+}
+function resetMapView() {
+  mapAutoFit = true;
+  const aspect = mapAspect(),
+    w = Math.max(800, 500 * aspect),
+    h = w / aspect;
+  view = { x: (800 - w) / 2, y: (500 - h) / 2, w, h };
+  paintMap();
+}
+function focusPlace(id) {
+  mapAutoFit = false;
+  const point = coordinates.get(id);
+  if (!point) return;
+  view.w = 200;
+  view.h = view.w / mapAspect();
+  view.x = point[0] - 100;
+  view.y = point[1] - view.h / 2;
+  paintMap();
+}
+$("locatePerson").onclick = safely(async () => {
+  if (!person) return;
+  const id = mapLocation ?? person.birth_place;
+  await residents(id);
+  focusPlace(id);
+});
 function zoom(factor) {
+  mapAutoFit = false;
   const w = Math.max(40, Math.min(1600, view.w * factor)),
-    h = (w * 500) / 800;
+    h = w / mapAspect();
   view.x += (view.w - w) / 2;
   view.y += (view.h - h) / 2;
   view.w = w;
@@ -765,10 +1066,7 @@ function zoom(factor) {
 }
 $("zoomIn").onclick = () => zoom(0.8);
 $("zoomOut").onclick = () => zoom(1.25);
-$("resetMap").onclick = () => {
-  view = { x: 0, y: 0, w: 800, h: 500 };
-  paintMap();
-};
+$("resetMap").onclick = resetMapView;
 $("map").addEventListener(
   "wheel",
   (e) => {
@@ -805,6 +1103,7 @@ $("map").onpointermove = (e) => {
       dy = e.clientY - drag.y;
     drag.moved ||= Math.hypot(dx, dy) > 4;
     if (drag.moved) {
+      mapAutoFit = false;
       const box = $("map").getBoundingClientRect();
       view.x = drag.vx - (dx * view.w) / box.width;
       view.y = drag.vy - (dy * view.h) / box.height;
@@ -840,6 +1139,7 @@ function paintMap() {
   if (!world || !$("map").getContext) return;
   const c = $("map"),
     ctx = c.getContext("2d"),
+    screenWidth = c.clientWidth || 800,
     sx = c.width / view.w,
     sy = c.height / view.h;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -887,7 +1187,8 @@ function paintMap() {
         b = coordinates.get(f.destination);
       if (!a || !b) continue;
       ctx.strokeStyle = "#6485b188";
-      ctx.lineWidth = ((0.4 + (2 * f.population) / maxFlow) * view.w) / 800;
+      ctx.lineWidth =
+        ((0.4 + (2 * f.population) / maxFlow) * view.w) / screenWidth;
       ctx.beginPath();
       ctx.moveTo(...a);
       ctx.lineTo(...b);
@@ -902,8 +1203,8 @@ function paintMap() {
         .map((m) => m.destination),
     ];
     ctx.strokeStyle = "#244e54";
-    ctx.lineWidth = (1.8 * view.w) / 800;
-    ctx.setLineDash([(4 * view.w) / 800, (4 * view.w) / 800]);
+    ctx.lineWidth = (1.8 * view.w) / screenWidth;
+    ctx.setLineDash([(4 * view.w) / screenWidth, (4 * view.w) / screenWidth]);
     ctx.beginPath();
     path.forEach((id, i) => {
       const point = coordinates.get(id);
@@ -915,6 +1216,7 @@ function paintMap() {
     ctx.stroke();
     ctx.setLineDash([]);
   }
+  const labels = [];
   for (const p of world.settlements) {
     const [x, y] = coordinates.get(p.id),
       pop = mapPopulation.get(p.id) || 0,
@@ -940,23 +1242,59 @@ function paintMap() {
     ctx.fill();
     if (origins.has(p.id) || p.id === chosenPlace || p.id === mapLocation) {
       ctx.strokeStyle = origins.has(p.id) ? "#cc7845" : "#203c40";
-      ctx.lineWidth = (1.2 * view.w) / 800;
+      ctx.lineWidth = (1.2 * view.w) / screenWidth;
       ctx.beginPath();
-      ctx.arc(x, y, r + (2 * view.w) / 800, 0, Math.PI * 2);
+      ctx.arc(x, y, r + (2 * view.w) / screenWidth, 0, Math.PI * 2);
       ctx.stroke();
     }
     if (
       world.settlements.length <= 64 ||
       view.w < 170 ||
-      p.id === chosenPlace
-    ) {
-      ctx.font = (10 * view.w) / 800 + "px system-ui";
-      ctx.fillStyle = "#263f40";
-      ctx.textAlign = "center";
-      ctx.fillText(p.name, x, y + r + (12 * view.w) / 800);
-      ctx.font = (9 * view.w) / 800 + "px system-ui";
-      ctx.fillText(fmt(pop), x, y + r + (23 * view.w) / 800);
-    }
+      p.id === chosenPlace ||
+      p.id === mapLocation
+    )
+      labels.push({ p, x, y, r, pop });
+  }
+  const occupied = [],
+    unit = view.w / screenWidth;
+  labels.sort(
+    (a, b) =>
+      Number(b.p.id === chosenPlace) - Number(a.p.id === chosenPlace) ||
+      b.pop - a.pop,
+  );
+  ctx.textAlign = "center";
+  for (const { p, x, y, r, pop } of labels) {
+    ctx.font = 10 * unit + "px system-ui";
+    const width = Math.max(ctx.measureText(p.name).width, 28 * unit),
+      top = y + r + 2 * unit;
+    const box = {
+      left: x - width / 2 - 3 * unit,
+      right: x + width / 2 + 3 * unit,
+      top,
+      bottom: top + 27 * unit,
+    };
+    if (
+      box.right < view.x ||
+      box.left > view.x + view.w ||
+      box.bottom < view.y ||
+      box.top > view.y + view.h
+    )
+      continue;
+    if (
+      occupied.some(
+        (b) =>
+          box.left < b.right &&
+          box.right > b.left &&
+          box.top < b.bottom &&
+          box.bottom > b.top,
+      )
+    )
+      continue;
+    occupied.push(box);
+    ctx.fillStyle = "#263f40";
+    ctx.fillText(p.name, x, y + r + 12 * unit);
+    ctx.font = 9 * unit + "px system-ui";
+    ctx.fillText(fmt(pop), x, y + r + 23 * unit);
   }
   c.dataset.places = world.settlements.length;
   c.dataset.year = selectedYear();
@@ -1003,6 +1341,18 @@ async function drawMap() {
     : "";
   $("yearText").textContent = y;
   const h = world.history.find((h) => h.year === y);
+  const historyToDate = world.history.filter((row) => row.year <= y);
+  const metricValues = [
+    [h?.population, "Habitants vivants · " + y],
+    ...["births", "deaths", "marriages"].map((key, index) => [
+      historyToDate.reduce((sum, row) => sum + row[key], 0),
+      ["Naissances", "Décès", "Unions"][index] + " · cumul",
+    ]),
+  ];
+  [...$("worldMetrics").children].forEach((card, index) => {
+    card.querySelector("b").textContent = fmt(metricValues[index][0]);
+    card.querySelector("span").textContent = metricValues[index][1];
+  });
   $("yearStats").textContent =
     fmt(h?.population) +
     " habitants dans le monde · " +
@@ -1022,11 +1372,20 @@ async function drawMap() {
   paintMap();
   drawRanking(mapPopulation, y);
   drawDistributions(distributions, y);
+  chart();
+  if (chosenPlace !== null)
+    $("globalSelection").textContent =
+      placeName(chosenPlace) +
+      " · " +
+      fmt(mapPopulation.get(chosenPlace)) +
+      " habitants en " +
+      y;
 }
 $("mapLayer").onchange = paintMap;
 $("raceFilter").onchange = safely(drawMap);
 $("placePicker").onchange = safely(async () => {
   await residents(Number($("placePicker").value));
+  focusPlace(chosenPlace);
   paintMap();
 });
 function drawDistributions(value, y) {
@@ -1182,13 +1541,43 @@ function drawRanking(pop, y) {
   }
 }
 
-let residentsEpoch = 0;
+let residentsEpoch = 0,
+  residentRows = [];
+function renderResidents() {
+  const text = $("residentSearch").value.trim(),
+    sex = $("residentSex").value,
+    race = $("residentRace").value;
+  const rows = residentRows.filter(
+    (p) =>
+      (!text || String(p.id).includes(text)) &&
+      (sex === "" || String(p.sex) === sex) &&
+      (race === "" || String(p.race) === race),
+  );
+  $("residents").replaceChildren(...rows.map(personButton));
+  if (!rows.length && residentRows.length)
+    $("residents").append(
+      el(
+        "p",
+        "Aucun résultat parmi les habitants chargés. Chargez la page suivante pour élargir la recherche.",
+        "small",
+      ),
+    );
+  $("residentCount").textContent =
+    rows.length +
+    " affichés / " +
+    residentRows.length +
+    " chargés · filtres sur la liste chargée";
+}
+$("residentSearch").oninput = renderResidents;
+document.querySelector(".residentsCard").append($("more"));
+$("residentSex").onchange = $("residentRace").onchange = renderResidents;
 
 async function residents(id, append = false) {
   const request = ++residentsEpoch;
   if (!append) {
     chosenPlace = id;
     lastResident = -1;
+    residentRows = [];
     $("residents").replaceChildren();
   }
   const list = await api(`residents?place=${id}&after=${lastResident}`);
@@ -1200,7 +1589,16 @@ async function residents(id, append = false) {
     " · habitants au dernier recensement (" +
     world.summary.end_year +
     ")";
-  for (const p of list) $("residents").append(personButton(p));
+  residentRows.push(...list);
+  renderResidents();
+  $("globalSelection").textContent =
+    placeName(id) +
+    " · " +
+    kindLabel(place(id).kind) +
+    " · " +
+    fmt(mapPopulation.get(id)) +
+    " habitants en " +
+    selectedYear();
   if (list.length) lastResident = list.at(-1).id;
   else if (!append)
     $("residents").append(
@@ -1215,12 +1613,33 @@ function fact(label, value) {
   return f;
 }
 
-async function selectPerson(id) {
+let personTrail = [],
+  personCursor = -1;
+$("personBack").onclick = safely(() =>
+  selectPerson(personTrail[personCursor - 1], false, personCursor - 1),
+);
+$("personForward").onclick = safely(() =>
+  selectPerson(personTrail[personCursor + 1], false, personCursor + 1),
+);
+async function selectPerson(id, remember = true, cursor = null) {
   const request = ++personEpoch,
     selected = await api("person?id=" + id);
   if (request !== personEpoch) return;
   person = selected;
+  if (cursor !== null) personCursor = cursor;
+  else if (remember && personTrail[personCursor] !== id) {
+    personTrail.splice(personCursor + 1);
+    personTrail.push(id);
+    personCursor = personTrail.length - 1;
+  }
+  $("personBack").disabled = personCursor <= 0;
+  $("personForward").disabled = personCursor >= personTrail.length - 1;
   $("identity").value = id;
+  document.querySelector(".personHead").dataset.sex = person.sex;
+  document
+    .querySelector(".personHead")
+    .style.setProperty("--race-color", raceColor(person.race));
+  renderResidents();
   $("personTitle").textContent =
     "#" + id + " · " + (person.sex ? "Femme" : "Homme");
   $("personTag").textContent =
@@ -1239,9 +1658,33 @@ async function selectPerson(id) {
     fact("Activité", activityName(person.activity)),
     fact("Niveau social", person.status),
   );
+  $("personFacts").append(
+    fact(
+      "Projet parental",
+      person.childfree === true
+        ? "Choix de ne pas avoir d’enfants · à vie"
+        : person.childfree === false
+          ? "Peut souhaiter des enfants"
+          : "Non simulé dans ce monde",
+    ),
+    fact(
+      "Fertilité biologique",
+      person.infertile === true
+        ? "Infertile · état à vie"
+        : person.infertile === false
+          ? "Fertile selon le modèle"
+          : "Non simulée dans ce monde",
+    ),
+  );
+  if (person.death !== null)
+    $("personFacts").append(
+      fact("Âge au décès", person.death - person.birth + " ans"),
+    );
   $("parents").replaceChildren(
     ...[person.father, person.mother].map((pid) =>
-      pid === null ? el("span", "Inconnu", "tag") : personButton({ id: pid }),
+      pid === null
+        ? el("span", "Inconnu", "tag")
+        : personButton({ id: pid, sex: pid === person.father ? 0 : 1 }),
     ),
   );
   $("children").replaceChildren(...person.children.map(personButton));
@@ -1304,7 +1747,10 @@ async function selectPerson(id) {
     }
     date.onclick = safely(async () => {
       $("year").value = nearestSnapshot(e.year);
-      if (e.place !== null) chosenPlace = e.place;
+      if (e.place !== null) {
+        await residents(e.place);
+        focusPlace(e.place);
+      }
       await drawMap();
     });
     row.append(date, body);
@@ -1314,8 +1760,131 @@ async function selectPerson(id) {
   await drawMap();
 }
 
-let treeEpoch = 0;
-
+// Layered pedigree layout: shared ancestors have one node; sweeps bring related
+// branches together and enforce a minimum horizontal gap within every generation.
+let treeAutoFit = true;
+let treeEpoch = 0,
+  treeBounds = { w: 850, h: 300 },
+  treeView = { x: 0, y: 0, w: 850, h: 300 },
+  treeDrag = null;
+function applyTreeView() {
+  const box = $("treeViewport").getBoundingClientRect();
+  if (box.width && box.height) {
+    const cy = treeView.y + treeView.h / 2;
+    treeView.h = (treeView.w * box.height) / box.width;
+    treeView.y = cy - treeView.h / 2;
+  }
+  $("tree").setAttribute(
+    "viewBox",
+    `${treeView.x} ${treeView.y} ${treeView.w} ${treeView.h}`,
+  );
+  $("treeZoomLabel").textContent =
+    Math.round(((box.width || 850) / treeView.w) * 100) + " %";
+}
+function fitTree() {
+  treeAutoFit = true;
+  const box = $("treeViewport").getBoundingClientRect(),
+    ratio = (box.width || 850) / (box.height || 440);
+  treeView.w = Math.max(
+    treeBounds.w,
+    treeBounds.h * ratio,
+    (box.width || 850) / 1.15,
+  );
+  treeView.h = treeView.w / ratio;
+  treeView.x = (treeBounds.w - treeView.w) / 2;
+  treeView.y = (treeBounds.h - treeView.h) / 2;
+  applyTreeView();
+}
+function zoomTree(factor, clientX, clientY) {
+  treeAutoFit = false;
+  const box = $("tree").getBoundingClientRect();
+  const rx = clientX === undefined ? 0.5 : (clientX - box.left) / box.width,
+    ry = clientY === undefined ? 0.5 : (clientY - box.top) / box.height;
+  const w = Math.max(180, Math.min(1000000, treeView.w * factor)),
+    h = (treeView.h * w) / treeView.w;
+  treeView.x += (treeView.w - w) * rx;
+  treeView.y += (treeView.h - h) * ry;
+  treeView.w = w;
+  treeView.h = h;
+  applyTreeView();
+}
+$("treeFit").onclick = fitTree;
+$("treeZoomIn").onclick = () => zoomTree(0.8);
+$("treeZoomOut").onclick = () => zoomTree(1.25);
+$("tree").addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    zoomTree(e.deltaY > 0 ? 1.12 : 0.89, e.clientX, e.clientY);
+  },
+  { passive: false },
+);
+$("tree").onpointerdown = (e) => {
+  treeDrag = {
+    x: e.clientX,
+    y: e.clientY,
+    vx: treeView.x,
+    vy: treeView.y,
+    moved: false,
+  };
+  $("tree").setPointerCapture(e.pointerId);
+};
+$("tree").onpointermove = (e) => {
+  if (!treeDrag) return;
+  const box = $("tree").getBoundingClientRect(),
+    dx = e.clientX - treeDrag.x,
+    dy = e.clientY - treeDrag.y;
+  treeDrag.moved ||= Math.hypot(dx, dy) > 4;
+  if (treeDrag.moved) {
+    treeAutoFit = false;
+    treeView.x = treeDrag.vx - (dx * treeView.w) / box.width;
+    treeView.y = treeDrag.vy - (dy * treeView.h) / box.height;
+    applyTreeView();
+  }
+};
+$("tree").onpointerup = safely(async (e) => {
+  const moved = treeDrag?.moved;
+  treeDrag = null;
+  // Pointer capture retargets pointerup; hit-test the released position to select a node.
+  if (!moved) {
+    const node = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest(".treeNode");
+    if (node) await selectPerson(Number(node.dataset.person));
+  }
+});
+$("tree").onpointercancel = () => (treeDrag = null);
+$("treeViewport").onkeydown = (e) => {
+  if (
+    [
+      "+",
+      "=",
+      "-",
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "Home",
+    ].includes(e.key)
+  )
+    e.preventDefault();
+  if (["+", "="].includes(e.key)) zoomTree(0.8);
+  else if (e.key === "-") zoomTree(1.25);
+  else if (e.key === "Home") fitTree();
+  else {
+    const dx = { ArrowLeft: -1, ArrowRight: 1 }[e.key] || 0,
+      dy = { ArrowUp: -1, ArrowDown: 1 }[e.key] || 0;
+    treeView.x += dx * treeView.w * 0.08;
+    treeView.y += dy * treeView.h * 0.08;
+    applyTreeView();
+  }
+};
+new ResizeObserver(() => {
+  if (activeTab === "individual") {
+    if (treeAutoFit) fitTree();
+    else applyTreeView();
+  }
+}).observe($("treeViewport"));
 async function drawTree() {
   if (!person) return;
   const request = ++treeEpoch,
@@ -1326,87 +1895,206 @@ async function drawTree() {
   if (request !== treeEpoch || person.id !== identity) return;
   lineage = result.people;
   const all = [{ ...person, generation: 0 }, ...lineage],
-    levels = new Map();
+    byId = new Map(all.map((p) => [p.id, p])),
+    levels = new Map(),
+    neighbors = new Map(all.map((p) => [p.id, []]));
   for (const p of all) {
     if (!levels.has(p.generation)) levels.set(p.generation, []);
     levels.get(p.generation).push(p);
+    for (const pid of [p.father, p.mother])
+      if (byId.has(pid)) {
+        neighbors.get(p.id).push(pid);
+        neighbors.get(pid).push(p.id);
+      }
   }
-  const maxGeneration = Math.max(...levels.keys()),
-    width = Math.max(850, ...[...levels.values()].map((l) => l.length * 165)),
-    height = (maxGeneration + 1) * 98 + 35,
-    t = $("tree");
-  t.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  t.style.width = width + "px";
-  t.style.height = height + "px";
-  t.replaceChildren();
-  const points = new Map();
-  for (const [generation, items] of levels)
+  const ordered = [...levels.keys()].sort((a, b) => a - b),
+    gap = 184,
+    rowHeight = 110,
+    maxGeneration = Math.max(...ordered),
+    positions = new Map();
+  const width = Math.max(
+    700,
+    ...[...levels.values()].map((l) => l.length * gap + 80),
+  );
+  for (const items of levels.values())
     items.forEach((p, i) =>
-      points.set(p.id, [
-        ((i + 0.5) * width) / items.length,
-        $("direction").value === "ancestors"
-          ? (maxGeneration - generation) * 98 + 45
-          : generation * 98 + 45,
-      ]),
+      positions.set(p.id, width / 2 + (i - (items.length - 1) / 2) * gap),
     );
+  for (let pass = 0; pass < 8; pass++) {
+    for (const generation of pass % 2 ? [...ordered].reverse() : ordered) {
+      const items = levels.get(generation);
+      const wanted = (p) => {
+        const adjacent = neighbors
+          .get(p.id)
+          .filter((id) =>
+            pass % 2
+              ? byId.get(id).generation > generation
+              : byId.get(id).generation < generation,
+          );
+        return adjacent.length
+          ? adjacent.reduce((sum, id) => sum + positions.get(id), 0) /
+              adjacent.length
+          : positions.get(p.id);
+      };
+      const desired = new Map(items.map((p) => [p.id, wanted(p)]));
+      items.sort(
+        (a, b) =>
+          desired.get(a.id) - desired.get(b.id) || a.sex - b.sex || a.id - b.id,
+      );
+      let previous = -Infinity;
+      const packed = items.map((p) => {
+        const x = Math.max(desired.get(p.id), previous + gap);
+        previous = x;
+        return x;
+      });
+      const offset =
+        packed.reduce((sum, x, i) => sum + x - desired.get(items[i].id), 0) /
+        items.length;
+      items.forEach((p, i) => positions.set(p.id, packed[i] - offset));
+    }
+  }
+  const minX = Math.min(...positions.values()) - 92,
+    maxX = Math.max(...positions.values()) + 92;
+  treeBounds = {
+    w: Math.max(400, maxX - minX + 60),
+    h: (maxGeneration + 1) * rowHeight + 40,
+  };
+  const t = $("tree");
+  t.replaceChildren();
+  const points = new Map(
+    all.map((p) => [
+      p.id,
+      [
+        positions.get(p.id) - minX + 30,
+        ($("direction").value === "ancestors"
+          ? maxGeneration - p.generation
+          : p.generation) *
+          rowHeight +
+          60,
+      ],
+    ]),
+  );
+  for (const generation of ordered) {
+    const y =
+      ($("direction").value === "ancestors"
+        ? maxGeneration - generation
+        : generation) *
+        rowHeight +
+      18;
+    const label = svg(
+      "text",
+      { x: 12, y, fill: "#8b978d", "font-size": 10 },
+      t,
+    );
+    label.textContent = generation ? "G" + generation : "Individu choisi";
+  }
   for (const p of all)
     for (const pid of [p.father, p.mother]) {
       if (!points.has(pid)) continue;
       const a = points.get(p.id),
         b = points.get(pid),
-        mid = (a[1] + b[1]) / 2;
+        down = b[1] > a[1] ? 1 : -1,
+        start = a[1] + down * 34,
+        end = b[1] - down * 34,
+        mid = (start + end) / 2;
       svg(
         "path",
         {
-          d: `M ${a[0]} ${a[1]} V ${mid} H ${b[0]} V ${b[1]}`,
+          d: `M ${a[0]} ${start} C ${a[0]} ${mid}, ${b[0]} ${mid}, ${b[0]} ${end}`,
           fill: "none",
-          stroke: "#c0cdbd",
-          "stroke-width": 1.4,
+          stroke: pid === p.mother ? "#c496ad" : "#92aec1",
+          "stroke-width": 1.5,
         },
         t,
       );
     }
   for (const p of all) {
     const [x, y] = points.get(p.id),
-      g = svg("g", { transform: `translate(${x},${y})`, class: "treeNode" }, t);
+      g = svg(
+        "g",
+        {
+          transform: `translate(${x},${y})`,
+          class: "treeNode",
+          "data-person": p.id,
+          "data-sex": p.sex,
+          tabindex: 0,
+          role: "button",
+          "aria-label": `Individu ${p.id}, ${p.sex ? "femme" : "homme"}, ${raceName(p.race)}, né en ${p.birth}`,
+        },
+        t,
+      );
     svg(
       "rect",
       {
-        x: -72,
-        y: -27,
-        width: 144,
-        height: 54,
+        x: -82,
+        y: -34,
+        width: 164,
+        height: 68,
         rx: 7,
-        fill: p.id === person.id ? "#e4efe5" : "#fffefa",
+        fill: p.id === person.id ? "#e2eee6" : "#fffefa",
         stroke: p.id === person.id ? "#287366" : "#cad4c6",
+        "stroke-width": p.id === person.id ? 2.5 : 1,
       },
       g,
     );
+    svg(
+      "rect",
+      {
+        x: -81,
+        y: -27,
+        width: 4,
+        height: 54,
+        rx: 2,
+        fill: p.sex ? "#a15c87" : "#42799b",
+      },
+      g,
+    );
+    svg("circle", { cx: 70, cy: -20, r: 4, fill: raceColor(p.race) }, g);
     const name = svg(
       "text",
-      {
-        "text-anchor": "middle",
-        y: -7,
-        fill: "#243c40",
-        "font-size": 12,
-        "font-weight": 600,
-      },
+      { x: -68, y: -12, fill: "#243c40", "font-size": 12, "font-weight": 650 },
       g,
     );
-    name.textContent = "#" + p.id + " · " + raceName(p.race);
+    name.textContent = (p.sex ? "♀" : "♂") + " #" + p.id;
     const date = svg(
       "text",
-      { "text-anchor": "middle", y: 12, fill: "#7a8980", "font-size": 11 },
+      { x: -68, y: 5, fill: "#6b7d73", "font-size": 10 },
       g,
     );
-    date.textContent = p.birth + " → " + (p.death ?? "vivant");
-    g.onclick = safely(() => selectPerson(p.id));
+    date.textContent =
+      p.birth +
+      "–" +
+      (p.death ?? "vivant") +
+      " · " +
+      raceName(p.race).slice(0, 15);
+    const location = svg(
+      "text",
+      { x: -68, y: 22, fill: "#87948b", "font-size": 10 },
+      g,
+    );
+    location.textContent = placeName(p.birth_place).slice(0, 25);
+    svg("title", {}, g).textContent =
+      raceName(p.race) +
+      " · " +
+      placeName(p.birth_place) +
+      " · naissance " +
+      p.birth +
+      " · décès " +
+      (p.death ?? "inconnu / vivant");
+    g.onkeydown = safely(async (e) => {
+      if (["Enter", " "].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        await selectPerson(p.id);
+      }
+    });
   }
   $("treeNote").textContent =
     fmt(all.length) +
-    " individus · cliquer pour ouvrir une fiche" +
+    " individus · glisser / molette · ♂ bleu / ♀ mauve · point = peuple" +
     (result.truncated ? " · vue limitée à 1 000 personnes" : "") +
     " · parents des fondateurs inconnus";
+  fitTree();
 }
 
 function chart() {
@@ -1419,11 +2107,17 @@ function chart() {
           ]
         : mode === "movement"
           ? [
+              ["divorces", "Divorces · moyenne/an", "#a76999"],
               ["marriages", "Unions · moyenne/an", "#b7974f"],
               ["migrations", "Déplacements · moyenne/an", "#6485b1"],
             ]
           : [["population", "Habitants", "#287366"]],
-    h = world.history.map((r) => ({
+    from = Number($("chartFrom").value || 0),
+    to = Number($("chartTo").value || world.history.length - 1),
+    history = world.history.slice(Math.min(from, to), Math.max(from, to) + 1),
+    firstYear = history[0].year,
+    lastYear = history.at(-1).year,
+    h = history.map((r) => ({
       ...r,
       ...Object.fromEntries(
         ["births", "deaths", "marriages", "divorces", "migrations"].map(
@@ -1432,17 +2126,18 @@ function chart() {
       ),
     })),
     max = Math.max(...h.flatMap((r) => series.map(([key]) => r[key])), 1) * 1.1,
-    c = $("chart");
+    c = $("chart"),
+    right = Math.max(360, c.clientWidth || 900) - 25,
+    plotWidth = right - 60;
+  c.setAttribute("viewBox", `0 0 ${right + 25} 230`);
   c.replaceChildren();
   const x = (i) =>
       60 +
-      ((h[i].year - world.summary.start_year) /
-        Math.max(world.summary.end_year - world.summary.start_year, 1)) *
-        815,
+      ((h[i].year - firstYear) / Math.max(lastYear - firstYear, 1)) * plotWidth,
     y = (value) => 185 - (value / max) * 160;
   for (let i = 0; i <= 4; i++) {
     const yy = 185 - i * 40;
-    svg("line", { x1: 60, y1: yy, x2: 875, y2: yy, stroke: "#e1e5dc" }, c);
+    svg("line", { x1: 60, y1: yy, x2: right, y2: yy, stroke: "#e1e5dc" }, c);
     const label = svg(
       "text",
       {
@@ -1473,13 +2168,10 @@ function chart() {
   }
 
   const xYear = (year) =>
-    60 +
-    ((year - world.summary.start_year) /
-      Math.max(world.summary.end_year - world.summary.start_year, 1)) *
-      815;
+    60 + ((year - firstYear) / Math.max(lastYear - firstYear, 1)) * plotWidth;
   for (const event of loadedConfig.events) {
-    const first = Math.max(world.summary.start_year, event.start_year),
-      last = Math.min(world.summary.end_year, event.end_year);
+    const first = Math.max(firstYear, event.start_year),
+      last = Math.min(lastYear, event.end_year);
     if (last < first) continue;
     const area = svg(
         "rect",
@@ -1504,7 +2196,7 @@ function chart() {
       svg(
         "polygon",
         {
-          points: `60,185 ${points.map((p) => p.join(",")).join(" ")} 875,185`,
+          points: `60,185 ${points.map((p) => p.join(",")).join(" ")} ${right},185`,
           fill: color,
           opacity: 0.08,
         },
@@ -1521,13 +2213,30 @@ function chart() {
       c,
     );
   }
+  const cursor = svg(
+    "line",
+    {
+      x1: xYear(selectedYear()),
+      x2: xYear(selectedYear()),
+      y1: 25,
+      y2: 185,
+      stroke: "#244e54",
+      "stroke-dasharray": "4 4",
+      "pointer-events": "none",
+    },
+    c,
+  );
   h.forEach((r, i) => {
     const hover = svg(
         "rect",
         {
-          x: x(i) - Math.max(2, 815 / h.length / 2),
+          x: i === 0 ? 60 : (x(i - 1) + x(i)) / 2,
           y: 25,
-          width: Math.max(4, 815 / h.length),
+          width: Math.max(
+            4,
+            (i === h.length - 1 ? right : (x(i) + x(i + 1)) / 2) -
+              (i === 0 ? 60 : (x(i - 1) + x(i)) / 2),
+          ),
           height: 160,
           fill: "transparent",
         },
@@ -1538,6 +2247,22 @@ function chart() {
       r.year +
       " · " +
       series.map(([key, label]) => label + " : " + fmt(r[key])).join(" · ");
+    const readout = title.textContent;
+    hover.onpointerenter = () => {
+      $("chartReadout").textContent = readout;
+      cursor.setAttribute("x1", x(i));
+      cursor.setAttribute("x2", x(i));
+    };
+    hover.setAttribute("tabindex", "0");
+    hover.setAttribute("role", "button");
+    hover.setAttribute("aria-label", readout + ", afficher sur la carte");
+    hover.onfocus = hover.onpointerenter;
+    hover.onkeydown = (e) => {
+      if (["Enter", " "].includes(e.key)) {
+        e.preventDefault();
+        hover.onclick();
+      }
+    };
     hover.onclick = safely(async () => {
       $("year").value = world.history.findIndex((h) => h.year === r.year);
       await drawMap();
@@ -1557,6 +2282,7 @@ function chart() {
 }
 
 async function loadWorld() {
+  stopPlayback();
   const epoch = ++worldEpoch;
   readArchive = $("archives").value || readArchive;
   ++personEpoch;
@@ -1564,6 +2290,8 @@ async function loadWorld() {
   ++treeEpoch;
   ++residentsEpoch;
   person = null;
+  personTrail = [];
+  personCursor = -1;
   lineage = [];
   const bundle = await api("world");
   if (epoch !== worldEpoch) return;
@@ -1571,8 +2299,9 @@ async function loadWorld() {
   loadedConfig = bundle.config;
   presets.current = clone(loadedConfig);
   const s = world.summary;
+  renderMortalityStats(s);
   $("tabExplore").textContent =
-    "02 · Explorer (" + world.settlements.length + " lieux)";
+    "02 · Monde · " + world.settlements.length + " lieux";
   $("worldEyebrow").textContent =
     "Graine " +
     loadedConfig.seed +
@@ -1611,6 +2340,19 @@ async function loadWorld() {
     o.value = r.id;
     $("raceFilter").append(o);
   }
+  $("residentRace").replaceChildren(
+    ...[...$("raceFilter").options].map((o) => o.cloneNode(true)),
+  );
+  for (const id of ["chartFrom", "chartTo"])
+    $(id).replaceChildren(
+      ...world.history.map((h, i) => {
+        const o = el("option", h.year);
+        o.value = i;
+        return o;
+      }),
+    );
+  $("chartFrom").value = 0;
+  $("chartTo").value = world.history.length - 1;
   $("placePicker").replaceChildren(
     ...world.settlements.map((p) => {
       const o = el("option", p.id + " · " + p.name);
@@ -1684,14 +2426,65 @@ async function loadWorld() {
 
 $("search").onsubmit = safely(async (e) => {
   e.preventDefault();
+  tab("individual");
   await selectPerson(Number($("identity").value));
 });
 let yearTimer;
 $("year").oninput = () => {
+  stopPlayback();
   clearTimeout(yearTimer);
   yearTimer = setTimeout(() => safely(drawMap)(), 100);
 };
 $("chartMode").onchange = chart;
+$("chartFrom").onchange = $("chartTo").onchange = () => {
+  $("chartReadout").textContent =
+    "Survoler un recensement · cliquer pour afficher sa carte.";
+  chart();
+};
+$("resetChart").onclick = () => {
+  $("chartFrom").value = 0;
+  $("chartTo").value = world.history.length - 1;
+  chart();
+};
+let playback;
+function stopPlayback() {
+  clearInterval(playback);
+  playback = null;
+  $("playYears").textContent = "▶";
+}
+$("playYears").onclick = () => {
+  if (playback) {
+    stopPlayback();
+    return;
+  }
+  if (Number($("year").value) === world.history.length - 1) $("year").value = 0;
+  $("playYears").textContent = "Ⅱ";
+  playback = setInterval(
+    safely(async () => {
+      const next = Number($("year").value) + 1;
+      if (next >= world.history.length) {
+        stopPlayback();
+        return;
+      }
+      $("year").value = next;
+      await drawMap();
+    }),
+    900,
+  );
+  safely(drawMap)();
+};
+for (const [id, delta] of [
+  ["prevYear", -1],
+  ["nextYear", 1],
+])
+  $(id).onclick = safely(async () => {
+    stopPlayback();
+    $("year").value = Math.max(
+      0,
+      Math.min(world.history.length - 1, Number($("year").value) + delta),
+    );
+    await drawMap();
+  });
 $("depth").onchange = $("direction").onchange = safely(async () => {
   await drawTree();
   await drawMap();
@@ -1715,8 +2508,10 @@ function voronoiCells(points, bounds) {
 }
 
 $("addNation").onclick = () => {
+  let name = "nation_" + config.nations.length;
+  while (config.nations.some((n) => n.name === name)) name += "_";
   config.nations.push({
-    name: "nation_" + config.nations.length,
+    name,
     founded: config.start_year,
     dissolved: null,
     capital: null,
@@ -1801,3 +2596,100 @@ function nearestSnapshot(year) {
 }
 
 $("previewLayer").onchange = $("previewYear").onchange = safely(refreshPreview);
+
+function renderMortalityHint() {
+  const d = config.demography,
+    weights = [d.male_birth_probability, 1 - d.male_birth_probability],
+    distribution = new Array(d.max_age + 1).fill(0);
+  for (const sex of [0, 1]) {
+    let survival = 1;
+    for (let age = 0; age <= d.max_age; age++) {
+      let q =
+        age === 0
+          ? d.infant_mortality
+          : age <= d.child_max_age
+            ? d.child_mortality
+            : d.adult_mortality +
+              d.aging_coefficient *
+                Math.exp(Math.min(700, d.aging_exponent * age));
+      q =
+        age === d.max_age
+          ? 1
+          : Math.min(1, q * (sex === 0 ? d.male_mortality_factor : 1));
+      distribution[age] += weights[sex] * survival * q;
+      survival *= 1 - q;
+    }
+  }
+  const mean = distribution.reduce((sum, p, age) => sum + p * age, 0),
+    childhood = distribution.slice(0, 15).reduce((a, b) => a + b, 0);
+  let cumulative = 0,
+    median = 0;
+  for (let age = 0; age < distribution.length; age++) {
+    cumulative += distribution[age];
+    if (cumulative >= 0.5) {
+      median = age;
+      break;
+    }
+  }
+  $("mortalityHint").textContent =
+    `Indication du modèle global : âge moyen au décès ${mean.toFixed(1)} ans · médiane ${median} ans · ${(childhood * 100).toFixed(1)} % meurent avant 15 ans. Calcul théorique avec mortalité par sexe, hors crises, maternité, régulation et variantes des peuples. L’âge maximal n’est pas l’espérance de vie. Les taux d’infertilité et de choix sans enfant sont des parts à vie, indépendantes, applicables aux deux partenaires.`;
+}
+function renderMortalityStats(summary) {
+  const m = summary.mortality,
+    metrics = $("mortalityMetrics");
+  metrics.replaceChildren();
+  $("deathBands").replaceChildren();
+  if (!m) {
+    $("mortalityDetail").textContent =
+      "Ce monde antérieur ne contient pas ces statistiques. Relancez une génération pour les calculer.";
+    return;
+  }
+  const percent = (n) => (n === null ? "—" : (n * 100).toFixed(1) + " %");
+  for (const [label, value, hint] of [
+    [
+      "Âge moyen au décès",
+      m.mean_age_at_death === null
+        ? "—"
+        : m.mean_age_at_death.toFixed(1) + " ans",
+      "Décès observés, tous âges",
+    ],
+    [
+      "Âge médian au décès",
+      m.median_age_at_death === null
+        ? "—"
+        : fmt(m.median_age_at_death) + " ans",
+      "La moitié des décès avant cet âge",
+    ],
+    [
+      "Décès avant 15 ans",
+      percent(m.deaths_under_15_fraction),
+      fmt(m.deaths_under_15) + " / " + fmt(m.observed_deaths) + " décès",
+    ],
+    [
+      "Enfants morts avant 15 ans",
+      percent(m.completed_childhood_mortality),
+      fmt(m.childhood_deaths_in_completed_cohort) +
+        " / " +
+        fmt(m.completed_childhood_cohort) +
+        " naissances suivies ≥ 15 ans",
+    ],
+  ]) {
+    const item = el("div");
+    item.append(
+      el("span", label, "small"),
+      el("b", value),
+      el("small", hint, "small"),
+    );
+    metrics.append(item);
+  }
+  for (const [age, n] of Object.entries(m.death_age_bands)) {
+    const b = el("span", `${age} ans · ${fmt(n)} décès`, "tag");
+    $("deathBands").append(b);
+  }
+  $("mortalityDetail").textContent =
+    `Survie infantile : fondateurs exclus (${fmt(m.excluded_founders)}), leur enfance antérieure est inconnue. ${fmt(m.unresolved_childhood_cohort)} naissances trop récentes pour un suivi de 15 ans sont aussi exclues du taux des enfants. Les âges au décès incluent les fondateurs ; il s’agit de décès observés, pas d’une espérance de vie estimée.`;
+}
+
+new ResizeObserver(() => {
+  if (world && $("chart").clientWidth) chart();
+}).observe($("chart"));
