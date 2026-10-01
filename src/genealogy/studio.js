@@ -2228,9 +2228,13 @@ async function drawTree() {
   if (!person) return;
   const request = ++treeEpoch,
     identity = person.id,
-    result = await api(
-      `lineage?id=${identity}&depth=${$("depth").value}&direction=${$("direction").value}`,
-    );
+    requestedDepth = Number($("depth").value),
+    direction = $("direction").value;
+  $("treeNote").textContent =
+    `Chargement · ${requestedDepth} générations demandées…`;
+  const result = await api(
+    `lineage?id=${identity}&depth=${requestedDepth}&direction=${direction}`,
+  );
   if (request !== treeEpoch || person.id !== identity) return;
   lineage = result.people;
   const all = [{ ...person, generation: 0 }, ...lineage],
@@ -2305,7 +2309,7 @@ async function drawTree() {
       p.id,
       [
         positions.get(p.id) - minX + 30,
-        ($("direction").value === "ancestors"
+        (direction === "ancestors"
           ? maxGeneration - p.generation
           : p.generation) *
           rowHeight +
@@ -2315,9 +2319,7 @@ async function drawTree() {
   );
   for (const generation of ordered) {
     const y =
-      ($("direction").value === "ancestors"
-        ? maxGeneration - generation
-        : generation) *
+      (direction === "ancestors" ? maxGeneration - generation : generation) *
         rowHeight +
       18;
     const label = svg(
@@ -2429,9 +2431,14 @@ async function drawTree() {
     });
   }
   $("treeNote").textContent =
+    `${maxGeneration} / ${requestedDepth} générations affichées · ` +
     fmt(all.length) +
     " individus · glisser / molette · ♂ bleu / ♀ mauve · point = peuple" +
-    (result.truncated ? " · vue limitée à 1 000 personnes" : "") +
+    (result.truncated
+      ? " · limite de 1 000 apparentés atteinte : dernière génération potentiellement incomplète"
+      : maxGeneration < requestedDepth
+        ? " · fin des liens connus dans cette direction"
+        : "") +
     " · parents des fondateurs inconnus";
   fitTree();
 }
